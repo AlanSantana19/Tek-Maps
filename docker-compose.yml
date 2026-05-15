@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tekmap
+      POSTGRES_USER: tekmap
+      POSTGRES_PASSWORD: tekmap
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tekmap -d tekmap"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://tekmap:tekmap@postgres:5432/tekmap
+      JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://sygtek.com.br:9000}
+      ZABBIX_URL: ${ZABBIX_URL:-https://zabbix.example.com/api_jsonrpc.php}
+      ZABBIX_USER: ${ZABBIX_USER:-api-user}
+      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD:-api-password}
+      ZABBIX_POLL_INTERVAL_MS: ${ZABBIX_POLL_INTERVAL_MS:-15000}
+      ZABBIX_REQUEST_TIMEOUT_MS: ${ZABBIX_REQUEST_TIMEOUT_MS:-10000}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    ports:
+      - "${HTTP_PORT:-9000}:80"
+    depends_on:
+      - server
+
+volumes:
+  postgres-data:
