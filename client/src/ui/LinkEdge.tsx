@@ -1,14 +1,17 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
-import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext } from "react";
 import type { DeviceSnapshot } from "../types";
 
-export type CableType = "fiber" | "utp" | "radio";
+export type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
 
 const CABLE_TYPE_LABELS: Record<CableType, string> = {
-  fiber: "Fibra",
-  utp:   "UTP",
-  radio: "Rádio",
+  fiber:    "Fibra",
+  utp:      "UTP",
+  radio:    "Rádio",
+  wireless: "Wireless",
+  vpn:      "VPN",
+  other:    "Outro",
 };
 
 export type LinkEdgePayload = {
@@ -23,12 +26,13 @@ export type LinkEdgePayload = {
   cableType?: CableType;
   color?: string;
   strokeWidth?: number;
-  lineStyle?: "solid" | "dashed";
+  lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
   showTraffic?: boolean;
   showLabel?: boolean;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
+
 
 export function LinkEdge({
   id,
@@ -55,28 +59,13 @@ export function LinkEdge({
     targetPosition,
   });
 
-  // Ref to the invisible measure path — used for getTotalLength/getPointAtLength
-  const measureRef = useRef<SVGPathElement>(null);
-
-  // True midpoint of the real SVG path — initialised from getSmoothStepPath estimate
-  const [midX, setMidX] = useState(labelX);
-  const [midY, setMidY] = useState(labelY);
-
-  // Fires synchronously before paint so the label jumps directly to the right place
-  useLayoutEffect(() => {
-    const el = measureRef.current;
-    if (!el) return;
-    const len = el.getTotalLength();
-    if (len <= 0) return;
-    const pt = el.getPointAtLength(len / 2);
-    setMidX(pt.x);
-    setMidY(pt.y);
-  }, [edgePath]); // recalculate every time the path changes
-
   const configuredColor = data?.color ?? "#9ca3af";
   const strokeWidth     = data?.strokeWidth ?? 2;
   const showTraffic     = data?.showTraffic ?? true;
-  const configuredDash  = data?.lineStyle === "dashed" ? "8 6" : undefined;
+  const configuredDash  = data?.lineStyle === "dashed"  ? "8 6"
+                        : data?.lineStyle === "dotted"  ? "2 4"
+                        : data?.lineStyle === "dashdot" ? "12 4 2 4"
+                        : undefined;
 
   const sourceSnapshot = data?.sourceHostId ? snapshots.get(data.sourceHostId) : undefined;
   const sourcePort = data?.sourceOutInterface
@@ -113,17 +102,22 @@ export function LinkEdge({
 
   const pulsePathId = `pulse-path-${id}`;
 
+  const badgeW = 76;
+
+  const tooltipText = [
+    cableTypeLabel   ? `Tipo: ${cableTypeLabel}` : null,
+    sourceIfName     ? `Interface: ${sourceIfName}${data?.sourceInterfaceAlias ? ` (${data.sourceInterfaceAlias})` : ""}` : null,
+    `Status: ${isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}`,
+    `TX: ${formatBps(txBps)}`,
+    `RX: ${formatBps(rxBps)}`,
+  ].filter(Boolean).join("\n");
+
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={edgeStyle} markerEnd={markerEnd} />
 
-      {/*
-        Invisible path — same d as the cable.
-        measureRef reads its true length/midpoint.
-        pulsePathId lets animateMotion reference it.
-      */}
+      {/* Invisible path used as mpath target for animateMotion */}
       <path
-        ref={measureRef}
         id={pulsePathId}
         d={edgePath}
         fill="none"
@@ -152,52 +146,52 @@ export function LinkEdge({
         </g>
       ) : null}
 
-      {/* TX / RX badge — positioned at the true SVG path midpoint */}
-      <EdgeLabelRenderer>
-        {showTraffic && hasInterfaces ? (
+      {/* TX/RX badge — EdgeLabelRenderer renders in HTML space, tracks cable at any zoom/pan/drag */}
+      {showTraffic && hasInterfaces ? (
+        <EdgeLabelRenderer>
           <div
-            className={`link-edge-label link-edge-traffic nodrag nopan${isDown ? " link-edge-down" : ""}`}
-            style={{ transform: `translate(-50%, -50%) translate(${midX}px,${midY}px)` }}
+            className="nodrag nopan"
+            title={tooltipText}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: "all",
+              cursor: "default",
+              background: isDown ? "#1a0808" : "#0c0f14",
+              border: `1px solid ${isDown ? "#ef4444" : "#273244"}`,
+              borderRadius: 4,
+              padding: "3px 8px",
+              minWidth: badgeW,
+              textAlign: "center",
+              userSelect: "none",
+              lineHeight: 1.4,
+              ...(isDown
+                ? { filter: "drop-shadow(0 0 4px rgba(239,68,68,0.35))" }
+                : { boxShadow: "0 1px 5px rgba(0,0,0,.5)" }),
+            }}
           >
             {isDown ? (
-              <span className="link-down-text">DOWN</span>
+              <span style={{ color: "#ef4444", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
+                DOWN
+              </span>
             ) : (
               <>
                 {cableTypeLabel ? (
-                  <span className="cable-type-badge" style={{ background: strokeColor }}>
+                  <div style={{ color: "#fff", fontSize: 8, fontWeight: 700, letterSpacing: "0.04em" }}>
                     {cableTypeLabel}
-                  </span>
+                  </div>
                 ) : null}
-                <span className="link-traffic-tx">TX: {formatBps(txBps)}</span>
-                <span className="link-traffic-rx">RX: {formatBps(rxBps)}</span>
+                <div style={{ color: "#34d399", fontSize: 10, fontWeight: 600 }}>
+                  TX: {formatBps(txBps)}
+                </div>
+                <div style={{ color: "#60a5fa", fontSize: 10, fontWeight: 600 }}>
+                  RX: {formatBps(rxBps)}
+                </div>
               </>
             )}
-
-            <div className="link-edge-tooltip">
-              {cableTypeLabel ? (
-                <div className="tooltip-row">
-                  <span><strong>Tipo:</strong> {cableTypeLabel}</span>
-                </div>
-              ) : null}
-              {sourceIfName ? (
-                <div className="tooltip-row">
-                  <span>
-                    <strong>Interface:</strong> {sourceIfName}
-                    {data?.sourceInterfaceAlias ? ` (${data.sourceInterfaceAlias})` : ""}
-                  </span>
-                </div>
-              ) : null}
-              <div className="tooltip-row">
-                <span><strong>Status:</strong> {isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}</span>
-              </div>
-              <div className="tooltip-row">
-                <span><strong>TX:</strong> {formatBps(txBps)}</span>
-                <span><strong>RX:</strong> {formatBps(rxBps)}</span>
-              </div>
-            </div>
           </div>
-        ) : null}
-      </EdgeLabelRenderer>
+        </EdgeLabelRenderer>
+      ) : null}
     </>
   );
 }

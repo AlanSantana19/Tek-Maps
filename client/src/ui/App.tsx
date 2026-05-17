@@ -77,6 +77,7 @@ type DeviceNodeData = {
   labelPosition?: "above" | "below";
   color?: string;
   showBackground?: boolean;
+  showIp?: boolean;
   zabbixServerId?: string;
   statusItemKey?: string;
   onlineValue?: string;
@@ -89,13 +90,35 @@ type DeviceNodeData = {
 
 type DeviceFlowNode = Node<DeviceNodeData, "device">;
 
-type CableType = "fiber" | "utp" | "radio";
+type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
+type LineStyle = "solid" | "dashed" | "dotted" | "dashdot";
 
-const CABLE_TYPE_PRESETS: Record<CableType, { label: string; color: string; lineStyle: "solid" | "dashed"; strokeWidth: number }> = {
-  fiber: { label: "Fibra",  color: "#3b82f6", lineStyle: "solid",  strokeWidth: 2 },
-  utp:   { label: "UTP",   color: "#f59e0b", lineStyle: "solid",  strokeWidth: 2 },
-  radio: { label: "Rádio", color: "#a855f7", lineStyle: "dashed", strokeWidth: 2 },
+const CABLE_TYPE_PRESETS: Record<CableType, { label: string; color: string; lineStyle: LineStyle; strokeWidth: number }> = {
+  fiber:    { label: "Fibra",    color: "#3b82f6", lineStyle: "solid",   strokeWidth: 2 },
+  utp:      { label: "UTP",     color: "#f59e0b", lineStyle: "solid",   strokeWidth: 2 },
+  radio:    { label: "Rádio",   color: "#a855f7", lineStyle: "dashed",  strokeWidth: 2 },
+  wireless: { label: "Wireless", color: "#10b981", lineStyle: "dotted",  strokeWidth: 2 },
+  vpn:      { label: "VPN",     color: "#22c55e", lineStyle: "dashdot", strokeWidth: 2 },
+  other:    { label: "Outro",   color: "#9ca3af", lineStyle: "solid",   strokeWidth: 2 },
 };
+
+function lineStyleDash(lineStyle: LineStyle | undefined): string | undefined {
+  switch (lineStyle) {
+    case "dashed":  return "8 6";
+    case "dotted":  return "2 4";
+    case "dashdot": return "12 4 2 4";
+    default:        return undefined;
+  }
+}
+
+function cablePreviewBackground(lineStyle: LineStyle, color: string): string {
+  switch (lineStyle) {
+    case "dashed":  return `repeating-linear-gradient(90deg, ${color} 0, ${color} 8px, transparent 8px, transparent 14px)`;
+    case "dotted":  return `repeating-linear-gradient(90deg, ${color} 0, ${color} 2px, transparent 2px, transparent 6px)`;
+    case "dashdot": return `repeating-linear-gradient(90deg, ${color} 0, ${color} 10px, transparent 10px, transparent 14px, ${color} 14px, ${color} 16px, transparent 16px, transparent 22px)`;
+    default:        return color;
+  }
+}
 
 type LinkEdgeData = {
   sourceHostId?: string;
@@ -119,7 +142,7 @@ type LinkEdgeData = {
   cableType?: CableType;
   color?: string;
   strokeWidth?: number;
-  lineStyle?: "solid" | "dashed";
+  lineStyle?: LineStyle;
   showTraffic?: boolean;
   showLabel?: boolean;
 };
@@ -159,6 +182,7 @@ export function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [hosts, setHosts] = useState<DeviceSnapshot[]>([]);
+  const [wsConnected, setWsConnected] = useState(true);
   const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>([]);
   const [selectedTopology, setSelectedTopology] = useState<Topology & { id?: string }>({
     name: "Topologia principal",
@@ -199,7 +223,7 @@ export function App() {
     void loadInitialData();
     void getAppVersion().then(setAppVersion).catch(() => {});
     void listCustomIcons().then(setCustomIcons).catch(() => {});
-    const socket = openSnapshotsSocket(setHosts);
+    const socket = openSnapshotsSocket(setHosts, setWsConnected);
     return () => socket.close();
   }, [token]);
 
@@ -361,6 +385,7 @@ export function App() {
     labelPosition: "above" | "below";
     color: string;
     showBackground: boolean;
+    showIp: boolean;
     zabbixServerId?: string;
     statusItemKey?: string;
     onlineValue: string;
@@ -387,6 +412,7 @@ export function App() {
           labelPosition: value.labelPosition,
           color: value.color,
           showBackground: value.showBackground,
+          showIp: value.showIp,
           zabbixServerId: value.zabbixServerId,
           statusItemKey: value.statusItemKey,
           onlineValue: value.onlineValue,
@@ -865,6 +891,7 @@ function TopologyEditor({
     labelPosition: "above" | "below";
     color: string;
     showBackground: boolean;
+    showIp: boolean;
     zabbixServerId?: string;
     statusItemKey?: string;
     onlineValue: string;
@@ -896,6 +923,7 @@ function TopologyEditor({
     labelFontSize: 12,
     labelPosition: "below" as "above" | "below",
     color: "#ffffff",
+    showIp: false,
     showBackground: true,
     zabbixServerId: "",
     statusItemKey: "",
@@ -922,7 +950,7 @@ function TopologyEditor({
     cableType: "" as CableType | "",
     color: "#9ca3af",
     strokeWidth: 2,
-    lineStyle: "solid" as "solid" | "dashed",
+    lineStyle: "solid" as LineStyle,
     showTraffic: true,
     showLabel: true
   });
@@ -1206,6 +1234,7 @@ function TopologyEditor({
       labelPosition: node.data.labelPosition ?? "below",
       color: node.data.color ?? "#ffffff",
       showBackground: node.data.showBackground ?? true,
+      showIp: node.data.showIp ?? false,
       zabbixServerId: node.data.zabbixServerId ?? "",
       statusItemKey: node.data.statusItemKey ?? "",
       onlineValue: node.data.onlineValue ?? "1",
@@ -1236,6 +1265,7 @@ function TopologyEditor({
       labelPosition: deviceForm.labelPosition,
       color: deviceForm.color || "#ffffff",
       showBackground: deviceForm.showBackground,
+      showIp: deviceForm.showIp,
       zabbixServerId: deviceForm.zabbixServerId || undefined,
       statusItemKey: deviceForm.statusItemKey || undefined,
       onlineValue: deviceForm.onlineValue || "1",
@@ -1518,6 +1548,13 @@ function TopologyEditor({
                     <small>Quadro atras do icone</small>
                   </span>
                 </label>
+                <label className="element-checkbox">
+                  <input type="checkbox" checked={deviceForm.showIp} onChange={(event) => setDeviceForm({ ...deviceForm, showIp: event.target.checked })} />
+                  <span>
+                    Mostrar IP
+                    <small>Exibe o IP do host abaixo do nome</small>
+                  </span>
+                </label>
               </div>
 
               <div className="element-section">
@@ -1720,9 +1757,7 @@ function TopologyEditor({
                   >
                     <span
                       className="cable-type-line"
-                      style={{
-                        background: `repeating-linear-gradient(90deg, ${preset.color} 0, ${preset.color} ${preset.lineStyle === "dashed" ? "6px" : "100%"}, transparent ${preset.lineStyle === "dashed" ? "6px" : "0"}, transparent ${preset.lineStyle === "dashed" ? "10px" : "0"})`
-                      }}
+                      style={{ background: cablePreviewBackground(preset.lineStyle, preset.color) }}
                     />
                     {preset.label}
                   </button>
@@ -1746,9 +1781,11 @@ function TopologyEditor({
               </div>
               <label>
                 Tipo de linha
-                <select value={linkForm.lineStyle} onChange={(event) => setLinkForm({ ...linkForm, lineStyle: event.target.value as "solid" | "dashed" })}>
-                  <option value="solid">Solida</option>
+                <select value={linkForm.lineStyle} onChange={(event) => setLinkForm({ ...linkForm, lineStyle: event.target.value as LineStyle })}>
+                  <option value="solid">Sólida</option>
                   <option value="dashed">Tracejada</option>
+                  <option value="dotted">Pontilhada</option>
+                  <option value="dashdot">Traço-Ponto</option>
                 </select>
               </label>
               <label className="element-checkbox">
@@ -2535,6 +2572,7 @@ function toFlowNode(hosts: DeviceSnapshot[], icons: CustomIcon[]) {
       labelPosition: node.labelPosition,
       color: node.color,
       showBackground: node.showBackground,
+      showIp: node.showIp,
       zabbixServerId: node.zabbixServerId,
       statusItemKey: node.statusItemKey,
       onlineValue: node.onlineValue,
@@ -2559,6 +2597,7 @@ function fromFlowNode(node: DeviceFlowNode): Topology["nodes"][number] {
     labelPosition: node.data.labelPosition,
     color: node.data.color,
     showBackground: node.data.showBackground,
+    showIp: node.data.showIp,
     zabbixServerId: node.data.zabbixServerId,
     statusItemKey: node.data.statusItemKey,
     onlineValue: node.data.onlineValue,
@@ -2658,7 +2697,7 @@ function buildLinkEdge(edge: Pick<Edge, "id" | "source" | "target"> & { label?: 
     style: {
       stroke: data.color,
       strokeWidth: data.strokeWidth,
-      strokeDasharray: data.lineStyle === "dashed" ? "8 6" : undefined
+      strokeDasharray: lineStyleDash(data.lineStyle)
     }
   };
 }
@@ -2671,7 +2710,7 @@ function defaultLinkForm() {
     cableType: "" as CableType | "",
     color: "#9ca3af",
     strokeWidth: 2,
-    lineStyle: "solid" as "solid" | "dashed",
+    lineStyle: "solid" as LineStyle,
     showTraffic: true,
     showLabel: true
   };

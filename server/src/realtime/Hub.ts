@@ -7,6 +7,15 @@ export class Hub {
 
   constructor(server: http.Server) {
     this.wss = new WebSocketServer({ server, path: "/ws" });
+
+    // Keep connections alive through proxies that close idle sockets
+    setInterval(() => {
+      for (const client of this.wss.clients) {
+        if (client.readyState === client.OPEN) {
+          client.ping();
+        }
+      }
+    }, 30_000);
   }
 
   broadcastSnapshots(snapshots: DeviceSnapshot[]) {

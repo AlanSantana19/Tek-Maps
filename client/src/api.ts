@@ -136,16 +136,57 @@ export async function removeCustomIcon(id: string) {
   return apiDelete(`/api/icons/${id}`);
 }
 
-export function openSnapshotsSocket(onMessage: (snapshots: DeviceSnapshot[]) => void) {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
-  socket.addEventListener("message", (event) => {
-    const payload = JSON.parse(event.data) as { type: string; payload: DeviceSnapshot[] };
-    if (payload.type === "zabbix.snapshots") {
-      onMessage(payload.payload);
+export function openSnapshotsSocket(
+  onMessage: (snapshots: DeviceSnapshot[]) => void,
+  onConnected?: (connected: boolean) => void
+): { close: () => void } {
+  let destroyed = false;
+  let socket: WebSocket | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let backoff = 1_000;
+
+  function connect() {
+    if (destroyed) return;
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
+
+    socket.addEventListener("open", () => {
+      backoff = 1_000;
+      onConnected?.(true);
+    });
+
+    socket.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data as string) as { type: string; payload: DeviceSnapshot[] };
+        if (payload.type === "zabbix.snapshots") {
+          onMessage(payload.payload);
+        }
+      } catch { /* ignore malformed frames */ }
+    });
+
+    socket.addEventListener("close", () => {
+      if (destroyed) return;
+      onConnected?.(false);
+      reconnectTimer = setTimeout(() => {
+        backoff = Math.min(backoff * 2, 30_000);
+        connect();
+      }, backoff);
+    });
+
+    socket.addEventListener("error", () => {
+      socket?.close();
+    });
+  }
+
+  connect();
+
+  return {
+    close() {
+      destroyed = true;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      socket?.close();
     }
-  });
-  return socket;
+  };
 }
 
 function authHeaders(): Record<string, string> {

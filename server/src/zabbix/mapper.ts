@@ -6,6 +6,7 @@ interface ZabbixHost {
   name?: string;
   status: string;
   maintenance_status?: string;
+  interfaces?: Array<{ ip: string; main?: string; type?: string }>;
 }
 
 interface ZabbixItem {
@@ -57,10 +58,14 @@ export function mapZabbixSnapshots(
     const hostItems = itemsByHost.get(host.hostid) ?? [];
     const hostProblems = problemsByObject.get(host.hostid) ?? [];
 
+    const primaryInterface = host.interfaces?.find((iface) => iface.main === "1") ?? host.interfaces?.[0];
+    const ip = primaryInterface?.ip && primaryInterface.ip !== "0.0.0.0" ? primaryInterface.ip : undefined;
+
     return {
       hostId: host.hostid,
       hostName: host.host,
       visibleName: host.name || host.host,
+      ip,
       status: normalizeStatus(host, hostProblems, hostItems),
       metrics: extractMetrics(hostItems),
       ports: extractPorts(hostItems),

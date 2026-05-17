@@ -37,6 +37,7 @@ export interface DeviceSnapshot {
   hostId: string;
   hostName: string;
   visibleName: string;
+  ip?: string;
   status: DeviceStatus;
   metrics: DeviceMetric[];
   ports: PortMetric[];
@@ -55,6 +56,7 @@ export interface TopologyNode {
   labelPosition?: "above" | "below";
   color?: string;
   showBackground?: boolean;
+  showIp?: boolean;
   zabbixServerId?: string;
   statusItemKey?: string;
   onlineValue?: string;
@@ -85,10 +87,10 @@ export interface TopologyEdge {
   targetInterfaceAlias?: string;
   sourceInterface?: string;
   targetInterface?: string;
-  cableType?: "fiber" | "utp" | "radio";
+  cableType?: "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
   color?: string;
   strokeWidth?: number;
-  lineStyle?: "solid" | "dashed";
+  lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
   showTraffic?: boolean;
   showLabel?: boolean;
 }

@@ -10,6 +10,7 @@ interface DeviceNodeProps {
     labelFontSize?: number;
     labelPosition?: "above" | "below";
     showBackground?: boolean;
+    showIp?: boolean;
     statusItemKey?: string;
     onlineValue?: string;
     offlineValue?: string;
@@ -39,6 +40,7 @@ export function DeviceNode({ data }: DeviceNodeProps) {
       <div className="topology-label" style={{ fontSize: `${labelFontSize}px` }}>
         <strong>{data.label}</strong>
         {snapshot ? <span>{snapshot.hostName || snapshot.hostId}</span> : null}
+        {data.showIp && snapshot?.ip ? <span className="node-ip">{snapshot.ip}</span> : null}
       </div>
       <Handle type="source" position={Position.Right} />
     </div>

@@ -1,21 +1,17 @@
-import { execSync } from "node:child_process";
+const BASE_VERSION = "0.3.0";
 
-const BASE_VERSION = "0.2.0";
+const commitCount = process.env.GIT_COMMIT_COUNT ?? "0";
+const shortSha    = process.env.GIT_SHA ?? "local";
+const buildDate   = process.env.BUILD_DATE ?? "";
 
-function readGit(cmd: string, fallback: string): string {
-  try {
-    return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    return fallback;
-  }
-}
-
-const commitCount = process.env.GIT_COMMIT_COUNT ?? readGit("git rev-list --count HEAD", "0");
-const shortSha = process.env.GIT_SHA ?? readGit("git rev-parse --short HEAD", "unknown");
+// Build identifier: prefer git SHA, fall back to build date, then "local"
+const buildId = shortSha !== "local" ? shortSha
+              : buildDate            ? buildDate
+              : "local";
 
 export const appVersion = {
   name: "Tek Map",
   version: `${BASE_VERSION}.${commitCount}`,
-  channel: "9001-dev",
-  build: shortSha
+  channel: "stable",
+  build: buildId
 };

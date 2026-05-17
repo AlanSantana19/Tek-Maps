@@ -917,7 +917,7 @@ select {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 6px 8px;
   border-radius: 7px;
   border: 1.5px solid #273244;
   background: #141b26;
@@ -927,7 +927,7 @@ select {
   cursor: pointer;
   transition: border-color .15s, background .15s, color .15s;
   flex: 1;
-  min-width: 58px;
+  min-width: 48px;
 }
 
 .cable-type-btn:hover {
@@ -1880,6 +1880,13 @@ select {
   font-size: 0.9em;
 }
 
+.node-ip {
+  color: #64a0c8;
+  font-size: 0.85em;
+  font-family: monospace;
+  letter-spacing: 0.02em;
+}
+
 .error {
   margin: 0;
   color: #ff8b8b;
@@ -1914,118 +1921,6 @@ select {
 }
 
 /* ─── Link Edge custom renderer ─────────────────────────────────────────── */
-
-.link-edge-label {
-  position: absolute;
-  pointer-events: all;
-  user-select: none;
-}
-
-/* Traffic badge in the middle of the cable */
-.link-edge-traffic {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  width: max-content;
-  white-space: nowrap;
-  background: #0c0f14;
-  border: 1px solid #273244;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: default;
-  position: relative;
-  box-shadow: 0 2px 8px rgba(0,0,0,.5);
-}
-
-.cable-type-badge {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: #fff;
-  border-radius: 3px;
-  padding: 1px 5px;
-  margin-bottom: 2px;
-  opacity: .9;
-}
-
-.link-traffic-tx {
-  color: #34d399;
-}
-
-.link-traffic-rx {
-  color: #60a5fa;
-}
-
-/* DOWN state badge */
-.link-edge-down {
-  background: #1a0808;
-  border-color: #ef4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
-}
-
-.link-down-text {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  color: #ef4444;
-  padding: 0 2px;
-}
-
-/* Hover tooltip */
-.link-edge-tooltip {
-  display: none;
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  min-width: 220px;
-  background: #0c0f14;
-  border: 1px solid #273244;
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #a8b8c8;
-  z-index: 1000;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.link-edge-traffic:hover .link-edge-tooltip {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tooltip-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tooltip-row strong {
-  color: #e7eef2;
-}
-
-.tooltip-status {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: #4b5563;
-}
-
-.tooltip-status.up {
-  background: #10b981;
-}
-
-.tooltip-status.down {
-  background: #ef4444;
-}
 
 /* Interface labels near each end of the cable */
 .link-edge-iflabel {

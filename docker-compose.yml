@@ -21,8 +21,9 @@ services:
       context: .
       dockerfile: server/Dockerfile
       args:
-        GIT_SHA: ${GIT_SHA:-unknown}
+        GIT_SHA: ${GIT_SHA:-local}
         GIT_COMMIT_COUNT: ${GIT_COMMIT_COUNT:-0}
+        BUILD_DATE: ${BUILD_DATE:-}
     environment:
       NODE_ENV: production
       PORT: 4000

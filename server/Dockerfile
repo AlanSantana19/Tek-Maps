@@ -17,11 +17,13 @@ COPY server/src server/src
 RUN npm run build --workspace server
 
 FROM node:20-alpine AS runtime
-ARG GIT_SHA=unknown
+ARG GIT_SHA=local
 ARG GIT_COMMIT_COUNT=0
+ARG BUILD_DATE=
 ENV NODE_ENV=production
 ENV GIT_SHA=$GIT_SHA
 ENV GIT_COMMIT_COUNT=$GIT_COMMIT_COUNT
+ENV BUILD_DATE=$BUILD_DATE
 WORKDIR /app
 COPY package.json ./
 COPY server/package.json server/package.json
