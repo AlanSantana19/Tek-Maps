@@ -27,6 +27,7 @@ export type LinkEdgePayload = {
   color?: string;
   strokeWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
+  badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
 };
@@ -62,6 +63,7 @@ export function LinkEdge({
   const configuredColor = data?.color ?? "#9ca3af";
   const strokeWidth     = data?.strokeWidth ?? 2;
   const showTraffic     = data?.showTraffic ?? true;
+  const badgeFontSize   = Math.min(24, Math.max(8, data?.badgeFontSize ?? 10));
   const configuredDash  = data?.lineStyle === "dashed"  ? "8 6"
                         : data?.lineStyle === "dotted"  ? "2 4"
                         : data?.lineStyle === "dashdot" ? "12 4 2 4"
@@ -171,20 +173,20 @@ export function LinkEdge({
             }}
           >
             {isDown ? (
-              <span style={{ color: "#ef4444", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
+              <span style={{ color: "#ef4444", fontSize: Math.round(badgeFontSize * 1.1), fontWeight: 800, letterSpacing: "0.08em" }}>
                 DOWN
               </span>
             ) : (
               <>
                 {cableTypeLabel ? (
-                  <div style={{ color: "#fff", fontSize: 8, fontWeight: 700, letterSpacing: "0.04em" }}>
+                  <div style={{ color: "#fff", fontSize: Math.round(badgeFontSize * 0.8), fontWeight: 700, letterSpacing: "0.04em" }}>
                     {cableTypeLabel}
                   </div>
                 ) : null}
-                <div style={{ color: "#34d399", fontSize: 10, fontWeight: 600 }}>
+                <div style={{ color: "#34d399", fontSize: badgeFontSize, fontWeight: 600 }}>
                   TX: {formatBps(txBps)}
                 </div>
-                <div style={{ color: "#60a5fa", fontSize: 10, fontWeight: 600 }}>
+                <div style={{ color: "#60a5fa", fontSize: badgeFontSize, fontWeight: 600 }}>
                   RX: {formatBps(rxBps)}
                 </div>
               </>

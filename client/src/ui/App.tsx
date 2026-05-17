@@ -143,6 +143,7 @@ type LinkEdgeData = {
   color?: string;
   strokeWidth?: number;
   lineStyle?: LineStyle;
+  badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
 };
@@ -951,6 +952,7 @@ function TopologyEditor({
     color: "#9ca3af",
     strokeWidth: 2,
     lineStyle: "solid" as LineStyle,
+    badgeFontSize: 10,
     showTraffic: true,
     showLabel: true
   });
@@ -1127,6 +1129,7 @@ function TopologyEditor({
       color: data?.color ?? "#9ca3af",
       strokeWidth: data?.strokeWidth ?? 2,
       lineStyle: data?.lineStyle ?? "solid",
+      badgeFontSize: data?.badgeFontSize ?? 10,
       showTraffic: data?.showTraffic ?? true,
       showLabel: data?.showLabel ?? true
     });
@@ -1154,6 +1157,7 @@ function TopologyEditor({
       color: linkForm.color,
       strokeWidth: Number(linkForm.strokeWidth) || 2,
       lineStyle: linkForm.lineStyle,
+      badgeFontSize: Number(linkForm.badgeFontSize) || 10,
       showTraffic: linkForm.showTraffic,
       showLabel: linkForm.showLabel
     };
@@ -1507,19 +1511,27 @@ function TopologyEditor({
                     />
                   </div>
                 ) : null}
-                <div className="two-col-fields">
-                  <label>
-                    Tam. ícone
-                    <input type="number" min={16} max={128} value={deviceForm.iconSize} onChange={(event) => setDeviceForm({ ...deviceForm, iconSize: Number(event.target.value) })} />
-                  </label>
-                  <label>
-                    Posição label
-                    <select value={deviceForm.labelPosition} onChange={(event) => setDeviceForm({ ...deviceForm, labelPosition: event.target.value as "above" | "below" })}>
-                      <option value="below">Abaixo</option>
-                      <option value="above">Acima</option>
-                    </select>
-                  </label>
-                </div>
+                <label>
+                  Tam. ícone
+                  <div className="font-size-control">
+                    <button type="button" className="font-size-btn" onClick={() => setDeviceForm((f) => ({ ...f, iconSize: Math.max(16, f.iconSize - 8) }))}>−</button>
+                    <input
+                      type="number"
+                      min={16}
+                      max={128}
+                      value={deviceForm.iconSize}
+                      onChange={(event) => setDeviceForm({ ...deviceForm, iconSize: Math.min(128, Math.max(16, Number(event.target.value))) })}
+                    />
+                    <button type="button" className="font-size-btn" onClick={() => setDeviceForm((f) => ({ ...f, iconSize: Math.min(128, f.iconSize + 8) }))}>+</button>
+                  </div>
+                </label>
+                <label>
+                  Posição label
+                  <select value={deviceForm.labelPosition} onChange={(event) => setDeviceForm({ ...deviceForm, labelPosition: event.target.value as "above" | "below" })}>
+                    <option value="below">Abaixo</option>
+                    <option value="above">Acima</option>
+                  </select>
+                </label>
                 <label>
                   Tamanho da letra
                   <div className="font-size-control">
@@ -1546,13 +1558,6 @@ function TopologyEditor({
                   <span>
                     Fundo do Elemento
                     <small>Quadro atras do icone</small>
-                  </span>
-                </label>
-                <label className="element-checkbox">
-                  <input type="checkbox" checked={deviceForm.showIp} onChange={(event) => setDeviceForm({ ...deviceForm, showIp: event.target.checked })} />
-                  <span>
-                    Mostrar IP
-                    <small>Exibe o IP do host abaixo do nome</small>
                   </span>
                 </label>
               </div>
@@ -1791,6 +1796,20 @@ function TopologyEditor({
               <label className="element-checkbox">
                 <input type="checkbox" checked={linkForm.showTraffic} onChange={(event) => setLinkForm({ ...linkForm, showTraffic: event.target.checked })} />
                 <span>Exibir trafego no cabo</span>
+              </label>
+              <label>
+                Tamanho badge TX/RX
+                <div className="font-size-control">
+                  <button type="button" className="font-size-btn" onClick={() => setLinkForm((f) => ({ ...f, badgeFontSize: Math.max(8, f.badgeFontSize - 2) }))}>−</button>
+                  <input
+                    type="number"
+                    min={8}
+                    max={24}
+                    value={linkForm.badgeFontSize}
+                    onChange={(event) => setLinkForm({ ...linkForm, badgeFontSize: Math.min(24, Math.max(8, Number(event.target.value))) })}
+                  />
+                  <button type="button" className="font-size-btn" onClick={() => setLinkForm((f) => ({ ...f, badgeFontSize: Math.min(24, f.badgeFontSize + 2) }))}>+</button>
+                </div>
               </label>
               <label className="element-checkbox">
                 <input type="checkbox" checked={linkForm.showLabel} onChange={(event) => setLinkForm({ ...linkForm, showLabel: event.target.checked })} />
@@ -2636,6 +2655,7 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       color: edge.color,
       strokeWidth: edge.strokeWidth,
       lineStyle: edge.lineStyle,
+      badgeFontSize: edge.badgeFontSize,
       showTraffic: edge.showTraffic,
       showLabel: edge.showLabel
     }
@@ -2671,6 +2691,7 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     color: data?.color,
     strokeWidth: data?.strokeWidth,
     lineStyle: data?.lineStyle,
+    badgeFontSize: data?.badgeFontSize,
     showTraffic: data?.showTraffic,
     showLabel: data?.showLabel
   };
@@ -2711,6 +2732,7 @@ function defaultLinkForm() {
     color: "#9ca3af",
     strokeWidth: 2,
     lineStyle: "solid" as LineStyle,
+    badgeFontSize: 10,
     showTraffic: true,
     showLabel: true
   };

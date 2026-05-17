@@ -26,7 +26,7 @@ export function DeviceNode({ data }: DeviceNodeProps) {
   const labelPosition = data.labelPosition ?? "below";
   const showBackground = data.showBackground ?? true;
   const status = statusFor(data, snapshot);
-  const style = { "--node-icon-size": `${Math.max(40, Math.min(iconSize, 96))}px` } as CSSProperties;
+  const style = { "--node-icon-size": `${Math.max(16, Math.min(iconSize, 128))}px` } as CSSProperties;
 
   return (
     <div className={`device-node topology-symbol ${status} ${showBackground ? "" : "no-background"} label-${labelPosition}`} style={style}>
@@ -39,8 +39,6 @@ export function DeviceNode({ data }: DeviceNodeProps) {
       </div>
       <div className="topology-label" style={{ fontSize: `${labelFontSize}px` }}>
         <strong>{data.label}</strong>
-        {snapshot ? <span>{snapshot.hostName || snapshot.hostId}</span> : null}
-        {data.showIp && snapshot?.ip ? <span className="node-ip">{snapshot.ip}</span> : null}
       </div>
       <Handle type="source" position={Position.Right} />
     </div>

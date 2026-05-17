@@ -91,6 +91,7 @@ export interface TopologyEdge {
   color?: string;
   strokeWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
+  badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
 }
