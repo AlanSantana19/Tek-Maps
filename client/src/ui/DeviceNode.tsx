@@ -82,6 +82,8 @@ function TopologyGlyph({ type }: { type: string }) {
       return <ServerDiagramGlyph />;
     case "switch":
       return <SwitchDiagramGlyph />;
+    case "lte":
+      return <LteDiagramGlyph />;
     default:
       return <NetworkDiagramGlyph />;
   }
@@ -162,6 +164,23 @@ function ServerDiagramGlyph() {
   );
 }
 
+function LteDiagramGlyph() {
+  return (
+    <svg viewBox="0 0 80 56" aria-hidden="true" className="diagram-glyph lte-glyph">
+      {/* tower legs */}
+      <path className="glyph-body-stroke" d="M40 14 L22 50 M40 14 L58 50" />
+      {/* horizontal crossbars */}
+      <path className="glyph-mark" d="M27 32 h26 M30 42 h20" />
+      {/* signal arcs above tower */}
+      <path className="glyph-body-stroke" d="M31 12 Q40 5 49 12" />
+      <path className="glyph-body-stroke" d="M24 16 Q40 4 56 16" />
+      {/* antenna mast tip */}
+      <path className="glyph-mark" d="M40 14 V6" />
+      <circle className="glyph-body" cx="40" cy="6" r="3" />
+    </svg>
+  );
+}
+
 function NetworkDiagramGlyph() {
   return (
     <svg viewBox="0 0 80 56" aria-hidden="true" className="diagram-glyph network-glyph">
@@ -185,6 +204,8 @@ function iconToneFor(type: string) {
       return "icon-radio";
     case "server":
       return "icon-server";
+    case "lte":
+      return "icon-lte";
     default:
       return "icon-network";
   }

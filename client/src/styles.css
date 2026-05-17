@@ -1696,7 +1696,7 @@ select {
   min-width: calc(var(--node-icon-size) * 1.35);
   display: grid;
   justify-items: center;
-  gap: 9px;
+  gap: calc(var(--node-icon-size) * 0.15);
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -1797,6 +1797,10 @@ select {
 
 .topology-icon-wrap.icon-server {
   color: #64748b;
+}
+
+.topology-icon-wrap.icon-lte {
+  color: #0ea5e9;
 }
 
 .custom-icon-img {

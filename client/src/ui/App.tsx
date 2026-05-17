@@ -9,6 +9,7 @@ import {
   HardDrive,
   Image,
   KeyRound,
+  Layers,
   Lock,
   LogOut,
   Link2,
@@ -164,7 +165,8 @@ const paletteItems: PaletteItem[] = [
   { id: "switch-l3", label: "Switch L3", type: "switch", icon: Network },
   { id: "firewall", label: "Firewall", type: "firewall", icon: Shield },
   { id: "radio", label: "Radio", type: "radio", icon: Radio },
-  { id: "server", label: "Servidor", type: "server", icon: Server }
+  { id: "server", label: "Servidor", type: "server", icon: Server },
+  { id: "lte", label: "LTE", type: "lte", icon: Workflow }
 ];
 
 const menuItems: Array<{ id: SectionId; label: string; icon: typeof BarChart3 }> = [
@@ -427,6 +429,20 @@ export function App() {
     }));
   }
 
+  function bulkUpdateNodes(iconSize: number, labelFontSize: number) {
+    setNodes((current) => current.map((node) => ({
+      ...node,
+      data: { ...node.data, iconSize, labelFontSize }
+    })));
+  }
+
+  function bulkUpdateEdges(badgeFontSize: number) {
+    setEdges((current) => current.map((edge) => ({
+      ...edge,
+      data: { ...edge.data, badgeFontSize }
+    })));
+  }
+
   function duplicateDeviceNode(nodeId: string) {
     const source = nodes.find((node) => node.id === nodeId);
     if (!source) {
@@ -615,6 +631,8 @@ export function App() {
             onAddPaletteNode={addPaletteNode}
             onAddHostAt={addHostAt}
             onUpdateDeviceNode={updateDeviceNode}
+            onBulkUpdateNodes={bulkUpdateNodes}
+            onBulkUpdateEdges={bulkUpdateEdges}
             onRemoveDeviceNode={removeDeviceNode}
             onDuplicateDeviceNode={duplicateDeviceNode}
             onCreateLinkEdge={createLinkEdge}
@@ -862,6 +880,8 @@ function TopologyEditor({
   onAddPaletteNode,
   onAddHostAt,
   onUpdateDeviceNode,
+  onBulkUpdateNodes,
+  onBulkUpdateEdges,
   onRemoveDeviceNode,
   onDuplicateDeviceNode,
   onCreateLinkEdge,
@@ -901,6 +921,8 @@ function TopologyEditor({
     customIconId?: string;
     customIconUrl?: string;
   }) => void;
+  onBulkUpdateNodes: (iconSize: number, labelFontSize: number) => void;
+  onBulkUpdateEdges: (badgeFontSize: number) => void;
   onRemoveDeviceNode: (nodeId: string) => void;
   onDuplicateDeviceNode: (nodeId: string) => string | null;
   onCreateLinkEdge: (source: string, target: string, value: LinkEdgeData & { label?: string }) => string;
@@ -941,6 +963,8 @@ function TopologyEditor({
   const [hostPickerLoading, setHostPickerLoading] = useState(false);
   const [hostPickerError, setHostPickerError] = useState("");
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkForm, setBulkForm] = useState({ iconSize: 48, labelFontSize: 12, badgeFontSize: 10 });
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState<{ sourceId?: string; targetId?: string }>({});
   const [onlyWithTraffic, setOnlyWithTraffic] = useState(true);
@@ -1301,6 +1325,11 @@ function TopologyEditor({
     closeDeviceConfig();
   }
 
+  function applyBulkEdit() {
+    onBulkUpdateNodes(bulkForm.iconSize, bulkForm.labelFontSize);
+    onBulkUpdateEdges(bulkForm.badgeFontSize);
+  }
+
   return (
     <section className="workbench">
       <section className="map-stage">
@@ -1346,6 +1375,9 @@ function TopologyEditor({
             </div>
             <button className={`tool-button danger ${activeTool === "delete" ? "active" : ""}`} type="button" onClick={() => chooseTool("delete")} title="Excluir" aria-label="Excluir">
               <Trash2 size={17} />
+            </button>
+            <button className={`tool-button ${bulkEditOpen ? "active" : ""}`} type="button" onClick={() => setBulkEditOpen((v) => !v)} title="Editar todos os elementos" aria-label="Editar todos os elementos">
+              <Layers size={17} />
             </button>
           </div>
           <div className="editor-side-actions">
@@ -1487,6 +1519,7 @@ function TopologyEditor({
                     <option value="radio">Radio</option>
                     <option value="firewall">Firewall</option>
                     <option value="server">Servidor</option>
+                    <option value="lte">LTE</option>
                   </select>
                 </label>
                 {customIcons.length > 0 ? (
@@ -1661,6 +1694,57 @@ function TopologyEditor({
             <button className="element-dark-button" type="button" onClick={duplicateSelectedDevice}><Copy size={16} />Duplicar</button>
             <button className="element-cancel-button" type="button" onClick={closeDeviceConfig}>Cancelar</button>
             <button className="element-save-button" type="button" onClick={saveDeviceConfig}><Check size={16} />Salvar</button>
+          </div>
+        </aside>
+      ) : null}
+      {bulkEditOpen ? (
+        <aside className="element-editor-panel" role="dialog" aria-modal="true" aria-labelledby="bulk-edit-title">
+          <div className="element-editor-header">
+            <div>
+              <span className="element-kicker">Edição em massa</span>
+              <h2 id="bulk-edit-title">Todos os elementos</h2>
+            </div>
+            <button className="element-close-button" type="button" onClick={() => setBulkEditOpen(false)} aria-label="Fechar">
+              <X size={17} />
+            </button>
+          </div>
+          <div className="element-form">
+            <div className="element-section">
+              <div className="element-section-title">
+                <Layers size={16} />
+                <span>Aplicar a todos os nós</span>
+              </div>
+              <label>
+                Tamanho do ícone
+                <div className="font-size-control">
+                  <button type="button" className="font-size-btn" onClick={() => setBulkForm((f) => ({ ...f, iconSize: Math.max(16, f.iconSize - 8) }))}>−</button>
+                  <input type="number" min={16} max={128} value={bulkForm.iconSize} onChange={(e) => setBulkForm({ ...bulkForm, iconSize: Math.min(128, Math.max(16, Number(e.target.value))) })} />
+                  <button type="button" className="font-size-btn" onClick={() => setBulkForm((f) => ({ ...f, iconSize: Math.min(128, f.iconSize + 8) }))}>+</button>
+                </div>
+              </label>
+              <label>
+                Tamanho da letra
+                <div className="font-size-control">
+                  <button type="button" className="font-size-btn" onClick={() => setBulkForm((f) => ({ ...f, labelFontSize: Math.max(8, f.labelFontSize - 1) }))}>−</button>
+                  <input type="number" min={8} max={32} value={bulkForm.labelFontSize} onChange={(e) => setBulkForm({ ...bulkForm, labelFontSize: Math.min(32, Math.max(8, Number(e.target.value))) })} />
+                  <button type="button" className="font-size-btn" onClick={() => setBulkForm((f) => ({ ...f, labelFontSize: Math.min(32, f.labelFontSize + 1) }))}>+</button>
+                </div>
+              </label>
+              <label>
+                Badge TX/RX (cabos)
+                <div className="font-size-control">
+                  <button type="button" className="font-size-btn" onClick={() => setBulkForm((f) => ({ ...f, badgeFontSize: Math.max(8, f.badgeFontSize - 2) }))}>−</button>
+                  <input type="number" min={8} max={24} value={bulkForm.badgeFontSize} onChange={(e) => setBulkForm({ ...bulkForm, badgeFontSize: Math.min(24, Math.max(8, Number(e.target.value))) })} />
+                  <button type="button" className="font-size-btn" onClick={() => setBulkForm((f) => ({ ...f, badgeFontSize: Math.min(24, f.badgeFontSize + 2) }))}>+</button>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div className="element-footer">
+            <button className="element-save-button" type="button" onClick={applyBulkEdit}>
+              <Check size={16} />
+              Aplicar a todos
+            </button>
           </div>
         </aside>
       ) : null}

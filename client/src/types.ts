@@ -52,7 +52,7 @@ export interface Topology {
   nodes: Array<{
     id: string;
     hostId?: string;
-    type: "switch" | "router" | "radio" | "firewall" | "server" | "unknown";
+    type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "unknown";
     label: string;
     position: { x: number; y: number };
     iconSize?: number;
