@@ -24,4 +24,49 @@ describe("zabbix mapper", () => {
     expect(snapshots[0].ports[0]).toMatchObject({ name: "Gi0/1", inBps: 1000, outBps: 2000 });
     expect(snapshots[0].alerts[0]).toMatchObject({ name: "Link down", severity: 4 });
   });
+
+  it("uses snmp availability when icmp ping item is missing", () => {
+    expect(normalizeStatus(
+      { hostid: "1", host: "sw1", status: "0" },
+      [],
+      [{ hostid: "1", itemid: "a1", name: "SNMP availability", key_: "zabbix[host,snmp,available]", lastvalue: "1" }]
+    )).toBe("up");
+
+    expect(normalizeStatus(
+      { hostid: "1", host: "sw1", status: "0" },
+      [],
+      [{ hostid: "1", itemid: "a1", name: "SNMP availability", key_: "zabbix[host,snmp,available]", lastvalue: "2" }]
+    )).toBe("down");
+  });
+
+  it("uses agent availability when icmp ping and snmp availability are missing", () => {
+    expect(normalizeStatus(
+      { hostid: "1", host: "srv1", status: "0" },
+      [],
+      [{ hostid: "1", itemid: "a1", name: "Agent ping", key_: "agent.ping", lastvalue: "1" }]
+    )).toBe("up");
+  });
+
+  it("keeps icmp ping as the preferred status item", () => {
+    expect(normalizeStatus(
+      { hostid: "1", host: "sw1", status: "0" },
+      [],
+      [
+        { hostid: "1", itemid: "i1", name: "ICMP ping", key_: "icmpping", lastvalue: "0" },
+        { hostid: "1", itemid: "a1", name: "SNMP availability", key_: "zabbix[host,snmp,available]", lastvalue: "1" }
+      ]
+    )).toBe("down");
+  });
+
+  it("does not confuse icmp loss with icmp ping", () => {
+    expect(normalizeStatus(
+      { hostid: "1", host: "sw1", status: "0" },
+      [],
+      [
+        { hostid: "1", itemid: "i1", name: "ICMP loss", key_: "icmppingloss", lastvalue: "0" },
+        { hostid: "1", itemid: "i2", name: "ICMP ping", key_: "icmpping", lastvalue: "1" },
+        { hostid: "1", itemid: "i3", name: "ICMP response time", key_: "icmppingsec", lastvalue: "0.02" }
+      ]
+    )).toBe("up");
+  });
 });

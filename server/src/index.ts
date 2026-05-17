@@ -8,24 +8,25 @@ import { pool } from "./db/pool.js";
 import { logger } from "./logger.js";
 import { Hub } from "./realtime/Hub.js";
 import { AccessUserRepository } from "./repositories/AccessUserRepository.js";
+import { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import { SettingsRepository } from "./repositories/SettingsRepository.js";
 import { TopologyRepository } from "./repositories/TopologyRepository.js";
 import { ZabbixCacheRepository } from "./repositories/ZabbixCacheRepository.js";
 import { createRoutes } from "./routes.js";
-import { ZabbixClient } from "./zabbix/ZabbixClient.js";
 import { ZabbixSyncService } from "./zabbix/ZabbixSyncService.js";
 
 const app = express();
 app.use(helmet());
 app.use(cors({ origin: config.CORS_ORIGIN }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 app.use(pinoHttp({ logger }));
 
 const topologyRepository = new TopologyRepository(pool);
 const cacheRepository = new ZabbixCacheRepository(pool);
 const settingsRepository = new SettingsRepository(pool);
 const accessUserRepository = new AccessUserRepository(pool);
-app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository));
+const customIconRepository = new CustomIconRepository(pool);
+app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ error }, "request failed");
   res.status(500).json({ error: "internal_error" });
@@ -33,13 +34,20 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 const server = http.createServer(app);
 const hub = new Hub(server);
-const zabbix = new ZabbixClient({
-  url: config.ZABBIX_URL,
-  user: config.ZABBIX_USER,
-  password: config.ZABBIX_PASSWORD,
-  timeoutMs: config.ZABBIX_REQUEST_TIMEOUT_MS
-});
-const sync = new ZabbixSyncService(zabbix, cacheRepository, config.ZABBIX_POLL_INTERVAL_MS);
+const sync = new ZabbixSyncService(
+  settingsRepository,
+  cacheRepository,
+  config.ZABBIX_POLL_INTERVAL_MS,
+  config.ZABBIX_REQUEST_TIMEOUT_MS,
+  {
+    id: "00000000-0000-0000-0000-000000000000",
+    name: "Env Zabbix",
+    url: config.ZABBIX_URL,
+    user: config.ZABBIX_USER,
+    password: config.ZABBIX_PASSWORD,
+    active: true
+  }
+);
 sync.on("snapshots", (snapshots) => hub.broadcastSnapshots(snapshots));
 
 server.listen(config.PORT, () => {

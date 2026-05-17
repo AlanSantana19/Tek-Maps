@@ -61,6 +61,11 @@ export class SettingsRepository {
     return mapZabbixServer(result.rows[0]);
   }
 
+  async removeZabbixServer(id: string): Promise<boolean> {
+    const result = await this.db.query("DELETE FROM zabbix_servers WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async getZabbixConfig(): Promise<StoredZabbixConfig | null> {
     const servers = await this.listZabbixServers();
     if (servers[0]) {

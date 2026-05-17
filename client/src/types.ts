@@ -11,8 +11,16 @@ export interface DeviceMetric {
 export interface PortMetric {
   id: string;
   name: string;
+  index?: string;
+  alias?: string;
+  description?: string;
+  inItemId?: string;
+  outItemId?: string;
+  statusItemId?: string;
+  speedItemId?: string;
   inBps?: number;
   outBps?: number;
+  speedMbps?: number;
   utilizationPct?: number;
   operStatus?: "up" | "down" | "unknown";
 }
@@ -25,6 +33,7 @@ export interface DeviceAlert {
 }
 
 export interface DeviceSnapshot {
+  zabbixServerId?: string;
   hostId: string;
   hostName: string;
   visibleName: string;
@@ -38,14 +47,55 @@ export interface DeviceSnapshot {
 export interface Topology {
   id?: string;
   name: string;
+  zabbixServerId?: string;
   nodes: Array<{
     id: string;
     hostId?: string;
     type: "switch" | "router" | "radio" | "firewall" | "server" | "unknown";
     label: string;
     position: { x: number; y: number };
+    iconSize?: number;
+    labelFontSize?: number;
+    labelPosition?: "above" | "below";
+    color?: string;
+    showBackground?: boolean;
+    zabbixServerId?: string;
+    statusItemKey?: string;
+    onlineValue?: string;
+    offlineValue?: string;
+    advancedMode?: boolean;
+    customIconId?: string;
   }>;
-  edges: Array<{ id: string; source: string; target: string; label?: string }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+    sourceHostId?: string;
+    targetHostId?: string;
+    sourceOutInterface?: string;
+    sourceInInterface?: string;
+    targetInInterface?: string;
+    targetOutInterface?: string;
+    sourceOutItemId?: string;
+    sourceInItemId?: string;
+    targetInItemId?: string;
+    targetOutItemId?: string;
+    sourceStatusItemId?: string;
+    targetStatusItemId?: string;
+    sourceInterfaceName?: string;
+    targetInterfaceName?: string;
+    sourceInterfaceAlias?: string;
+    targetInterfaceAlias?: string;
+    sourceInterface?: string;
+    targetInterface?: string;
+    cableType?: "fiber" | "utp" | "radio";
+    color?: string;
+    strokeWidth?: number;
+    lineStyle?: "solid" | "dashed";
+    showTraffic?: boolean;
+    showLabel?: boolean;
+  }>;
 }
 
 export interface ZabbixServerConfig {
@@ -56,6 +106,53 @@ export interface ZabbixServerConfig {
   active: boolean;
   hasPassword: boolean;
   updatedAt?: string;
+}
+
+export interface ZabbixTestResult {
+  ok: boolean;
+  version?: string;
+  hostCount?: number;
+  monitoredHostCount?: number;
+  message: string;
+}
+
+export interface ZabbixItemsInspection {
+  server: ZabbixServerConfig;
+  hostCount: number;
+  itemCount: number;
+  hosts: Array<{
+    hostId: string;
+    hostName: string;
+    visibleName: string;
+    items: Array<{
+      itemId: string;
+      name: string;
+      key: string;
+      lastValue?: string;
+      units?: string;
+      updatedAt?: string;
+    }>;
+  }>;
+}
+
+export interface ZabbixHostsResult {
+  server: ZabbixServerConfig;
+  hostCount: number;
+  hosts: DeviceSnapshot[];
+}
+
+export interface CustomIcon {
+  id: string;
+  name: string;
+  dataUrl: string;
+  createdAt: string;
+}
+
+export interface AppVersion {
+  name: string;
+  version: string;
+  channel: string;
+  build: string;
 }
 
 export interface AccessUser {

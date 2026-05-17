@@ -6,16 +6,6 @@ export interface AuthRequest extends Request {
   user?: { sub: string; role: "admin" | "operator" | "viewer" };
 }
 
-export function issueToken(username: string, password: string): string | null {
-  if (username !== "admin" || password !== config.ADMIN_PASSWORD) {
-    return null;
-  }
-
-  return jwt.sign({ sub: "admin", role: "admin" }, config.JWT_SECRET, {
-    expiresIn: "8h"
-  });
-}
-
 export function signUserToken(user: { email: string; role: "admin" | "operator" | "viewer" }) {
   return jwt.sign({ sub: user.email, role: user.role }, config.JWT_SECRET, {
     expiresIn: "8h"

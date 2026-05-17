@@ -4,11 +4,13 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 9001,
+    strictPort: true,
+    allowedHosts: ["sygtek.com.br"],
     proxy: {
-      "/api": "http://localhost:4000",
+      "/api": "http://localhost:4001",
       "/ws": {
-        target: "ws://localhost:4000",
+        target: "ws://localhost:4001",
         ws: true
       }
     }

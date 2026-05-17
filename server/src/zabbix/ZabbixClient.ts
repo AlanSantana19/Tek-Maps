@@ -59,16 +59,26 @@ export class ZabbixClient {
         jsonrpc: "2.0",
         method,
         params,
-        id: this.requestId++,
-        ...(withAuth && this.authToken ? { auth: this.authToken } : {})
+        id: this.requestId++
       };
 
-      const response = await fetch(this.options.url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
+      let response: Response;
+      try {
+        response = await fetch(this.options.url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(withAuth && this.authToken ? { authorization: `Bearer ${this.authToken}` } : {})
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
+          throw new Error(`Tempo limite excedido ao consultar o Zabbix (${method}) apos ${Math.round(this.options.timeoutMs / 1000)}s`);
+        }
+        throw error;
+      }
 
       if (!response.ok) {
         throw new Error(`Zabbix HTTP ${response.status}`);

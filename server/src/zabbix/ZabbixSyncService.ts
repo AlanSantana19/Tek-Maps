@@ -1,18 +1,21 @@
 import { EventEmitter } from "node:events";
 import { logger } from "../logger.js";
+import type { SettingsRepository, StoredZabbixConfig } from "../repositories/SettingsRepository.js";
 import type { ZabbixCacheRepository } from "../repositories/ZabbixCacheRepository.js";
 import type { DeviceSnapshot } from "../types.js";
 import { mapZabbixSnapshots } from "./mapper.js";
-import type { ZabbixClient } from "./ZabbixClient.js";
+import { ZabbixClient } from "./ZabbixClient.js";
 
 export class ZabbixSyncService extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor(
-    private readonly client: ZabbixClient,
+    private readonly settings: SettingsRepository,
     private readonly cache: ZabbixCacheRepository,
-    private readonly intervalMs: number
+    private readonly intervalMs: number,
+    private readonly timeoutMs: number,
+    private readonly fallbackServer?: StoredZabbixConfig
   ) {
     super();
   }
@@ -36,7 +39,39 @@ export class ZabbixSyncService extends EventEmitter {
 
     this.running = true;
     try {
-      const hosts = await this.client.call<any[]>("host.get", {
+      const configuredServers = await this.settings.listZabbixServers();
+      const servers = configuredServers.filter((server) => server.active !== false && server.password);
+      await Promise.all(configuredServers
+        .filter((server) => server.active === false && server.id)
+        .map((server) => this.cache.replaceAll([], server.id)));
+      const targets = servers.length > 0 ? servers : this.fallbackServer?.password ? [this.fallbackServer] : [];
+      const snapshots = (await Promise.all(targets.map((server) => this.syncServer(server)))).flat();
+      this.emit("snapshots", snapshots);
+      logger.info({ hosts: snapshots.length, servers: targets.length }, "zabbix sync completed");
+      return snapshots;
+    } catch (error) {
+      logger.error({ error: error instanceof Error ? { message: error.message, stack: error.stack } : error }, "zabbix sync failed");
+      this.emit("syncError", error);
+      return [];
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async syncServer(server: StoredZabbixConfig): Promise<DeviceSnapshot[]> {
+    if (!server.id || !server.password) {
+      return [];
+    }
+
+    try {
+      const client = new ZabbixClient({
+        url: server.url,
+        user: server.user,
+        password: server.password,
+        timeoutMs: this.timeoutMs
+      });
+
+      const hosts = await client.call<any[]>("host.get", {
         output: ["hostid", "host", "name", "status", "maintenance_status"],
         selectInterfaces: ["ip", "dns", "type", "main"],
         monitored_hosts: true
@@ -44,39 +79,151 @@ export class ZabbixSyncService extends EventEmitter {
 
       const hostIds = hosts.map((host) => host.hostid);
       if (hostIds.length === 0) {
-        await this.cache.replaceAll([]);
+        logger.warn({ serverId: server.id, serverName: server.name }, "zabbix sync returned no monitored hosts");
+        await this.cache.replaceAll([], server.id);
         return [];
       }
 
-      const [items, problems] = await Promise.all([
-        this.client.call<any[]>("item.get", {
-          output: ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"],
-          hostids: hostIds,
-          monitored: true,
-          filter: { status: "0" },
-          sortfield: "name",
-          limit: Math.max(500, hostIds.length * 80)
-        }),
-        this.client.call<any[]>("problem.get", {
-          output: ["eventid", "objectid", "name", "severity", "clock"],
-          hostids: hostIds,
-          recent: false,
-          sortfield: ["eventid"],
-          sortorder: "DESC"
-        })
-      ]);
+      let icmpItems: any[] = [];
+      let availabilityItems: any[] = [];
+      try {
+        [icmpItems, availabilityItems] = await Promise.all([
+          client.call<any[]>("item.get", {
+            output: ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"],
+            hostids: hostIds,
+            monitored: true,
+            search: { key_: "icmpping" },
+            sortfield: "name",
+            limit: Math.max(200, hostIds.length * 4)
+          }),
+          client.call<any[]>("item.get", {
+            output: ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"],
+            hostids: hostIds,
+            monitored: true,
+            search: { key_: "available" },
+            sortfield: "name",
+            limit: Math.max(200, hostIds.length * 8)
+          })
+        ]);
+      } catch (error) {
+        logger.warn({
+          serverId: server.id,
+          serverName: server.name,
+          error: error instanceof Error ? { message: error.message } : error
+        }, "zabbix sync could not load status items");
+      }
 
-      const snapshots = mapZabbixSnapshots(hosts, items, problems);
-      await this.cache.replaceAll(snapshots);
-      this.emit("snapshots", snapshots);
-      logger.info({ hosts: snapshots.length }, "zabbix sync completed");
+      const baseStatusItems = mergeItemsById(icmpItems, availabilityItems);
+
+      let items: any[] = [];
+      let interfaceItems: any[] = [];
+      let problems: any[] = [];
+      try {
+        [items, interfaceItems, problems] = await Promise.all([
+          fetchItemsInBatches(client, hostIds),
+          fetchInterfaceItemsInBatches(client, hostIds),
+          client.call<any[]>("problem.get", {
+            output: ["eventid", "objectid", "name", "severity", "clock"],
+            hostids: hostIds,
+            recent: false,
+            sortfield: ["eventid"],
+            sortorder: "DESC"
+          })
+        ]);
+      } catch (error) {
+        logger.warn({
+          serverId: server.id,
+          serverName: server.name,
+          error: error instanceof Error ? { message: error.message } : error
+        }, "zabbix sync falhou ao carregar itens, gravando apenas status base");
+        const baseSnapshots = mapZabbixSnapshots(hosts, baseStatusItems, []).map((s) => ({
+          ...s,
+          zabbixServerId: server.id
+        }));
+        await this.cache.replaceAll(baseSnapshots, server.id);
+        return baseSnapshots;
+      }
+
+      const allItems = mergeItemsById(icmpItems, availabilityItems, items, interfaceItems);
+      const snapshots = mapZabbixSnapshots(hosts, allItems, problems).map((snapshot) => ({
+        ...snapshot,
+        zabbixServerId: server.id
+      }));
+      logger.info({
+        serverId: server.id,
+        serverName: server.name,
+        hosts: snapshots.length,
+        totalItems: allItems.length,
+        hostsWithPorts: snapshots.filter((s) => s.ports.length > 0).length
+      }, "zabbix sync completed for server");
+      await this.cache.replaceAll(snapshots, server.id);
       return snapshots;
     } catch (error) {
-      logger.error({ error }, "zabbix sync failed");
-      this.emit("syncError", error);
+      logger.error({
+        serverId: server.id,
+        serverName: server.name,
+        error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+      }, "zabbix server sync failed");
       return [];
-    } finally {
-      this.running = false;
     }
   }
+}
+
+function mergeItemsById(...groups: any[][]): any[] {
+  const items = new Map<string, any>();
+  for (const group of groups) {
+    for (const item of group) {
+      items.set(item.itemid, item);
+    }
+  }
+  return [...items.values()];
+}
+
+const HOST_BATCH_SIZE = 20;
+const ITEM_OUTPUT = ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"] as const;
+
+async function fetchItemsInBatches(client: ZabbixClient, hostIds: string[]): Promise<any[]> {
+  const results: any[] = [];
+  for (let i = 0; i < hostIds.length; i += HOST_BATCH_SIZE) {
+    const batch = hostIds.slice(i, i + HOST_BATCH_SIZE);
+    try {
+      const batchItems = await client.call<any[]>("item.get", {
+        output: ITEM_OUTPUT,
+        hostids: batch,
+        monitored: true,
+        sortfield: "name"
+      });
+      results.push(...batchItems);
+    } catch (error) {
+      logger.warn(
+        { batchStart: i, batchSize: batch.length, error: error instanceof Error ? error.message : error },
+        "item batch falhou, continuando com demais batches"
+      );
+    }
+  }
+  return results;
+}
+
+async function fetchInterfaceItemsInBatches(client: ZabbixClient, hostIds: string[]): Promise<any[]> {
+  const results: any[] = [];
+  for (let i = 0; i < hostIds.length; i += HOST_BATCH_SIZE) {
+    const batch = hostIds.slice(i, i + HOST_BATCH_SIZE);
+    try {
+      const batchItems = await client.call<any[]>("item.get", {
+        output: ITEM_OUTPUT,
+        hostids: batch,
+        monitored: true,
+        searchByAny: true,
+        search: { key_: ["net.if", "ifIn", "ifOut", "ifOper", "ifName", "ifDescr", "ifAlias", "ifHighSpeed", "ifSpeed"] },
+        sortfield: "name"
+      });
+      results.push(...batchItems);
+    } catch (error) {
+      logger.warn(
+        { batchStart: i, batchSize: batch.length, error: error instanceof Error ? error.message : error },
+        "interface item batch falhou, continuando"
+      );
+    }
+  }
+  return results;
 }

@@ -11,8 +11,16 @@ export interface DeviceMetric {
 export interface PortMetric {
   id: string;
   name: string;
+  index?: string;
+  alias?: string;
+  description?: string;
+  inItemId?: string;
+  outItemId?: string;
+  statusItemId?: string;
+  speedItemId?: string;
   inBps?: number;
   outBps?: number;
+  speedMbps?: number;
   utilizationPct?: number;
   operStatus?: "up" | "down" | "unknown";
 }
@@ -25,6 +33,7 @@ export interface DeviceAlert {
 }
 
 export interface DeviceSnapshot {
+  zabbixServerId?: string;
   hostId: string;
   hostName: string;
   visibleName: string;
@@ -41,6 +50,16 @@ export interface TopologyNode {
   type: "switch" | "router" | "radio" | "firewall" | "server" | "unknown";
   label: string;
   position: { x: number; y: number };
+  iconSize?: number;
+  labelFontSize?: number;
+  labelPosition?: "above" | "below";
+  color?: string;
+  showBackground?: boolean;
+  zabbixServerId?: string;
+  statusItemKey?: string;
+  onlineValue?: string;
+  offlineValue?: string;
+  advancedMode?: boolean;
 }
 
 export interface TopologyEdge {
@@ -48,11 +67,36 @@ export interface TopologyEdge {
   source: string;
   target: string;
   label?: string;
+  sourceHostId?: string;
+  targetHostId?: string;
+  sourceOutInterface?: string;
+  sourceInInterface?: string;
+  targetInInterface?: string;
+  targetOutInterface?: string;
+  sourceOutItemId?: string;
+  sourceInItemId?: string;
+  targetInItemId?: string;
+  targetOutItemId?: string;
+  sourceStatusItemId?: string;
+  targetStatusItemId?: string;
+  sourceInterfaceName?: string;
+  targetInterfaceName?: string;
+  sourceInterfaceAlias?: string;
+  targetInterfaceAlias?: string;
+  sourceInterface?: string;
+  targetInterface?: string;
+  cableType?: "fiber" | "utp" | "radio";
+  color?: string;
+  strokeWidth?: number;
+  lineStyle?: "solid" | "dashed";
+  showTraffic?: boolean;
+  showLabel?: boolean;
 }
 
 export interface Topology {
   id: string;
   name: string;
+  zabbixServerId?: string;
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   updatedAt?: string;

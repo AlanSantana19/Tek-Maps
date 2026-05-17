@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS topologies (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
+  zabbix_server_id UUID,
   nodes JSONB NOT NULL DEFAULT '[]'::jsonb,
   edges JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8,6 +9,7 @@ CREATE TABLE IF NOT EXISTS topologies (
 );
 
 CREATE TABLE IF NOT EXISTS zabbix_host_cache (
+  zabbix_server_id UUID,
   host_id TEXT PRIMARY KEY,
   host_name TEXT NOT NULL,
   visible_name TEXT NOT NULL,
@@ -44,4 +46,11 @@ CREATE TABLE IF NOT EXISTS access_users (
   password_hash TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS custom_icons (
+  id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  data_url TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
