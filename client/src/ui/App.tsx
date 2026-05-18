@@ -994,6 +994,9 @@ function TopologyEditor({
   const [hostPickerSearch, setHostPickerSearch] = useState("");
   const [hostPickerLoading, setHostPickerLoading] = useState(false);
   const [hostPickerError, setHostPickerError] = useState("");
+  const [hostPickerSelected, setHostPickerSelected] = useState<Set<string>>(new Set());
+  const [hostPickerAnchor, setHostPickerAnchor] = useState<string | null>(null);
+  const [hostPickerEditMenuOpen, setHostPickerEditMenuOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkForm, setBulkForm] = useState({ iconSize: 48, labelFontSize: 12, badgeFontSize: 10 });
@@ -1274,6 +1277,49 @@ function TopologyEditor({
     setSelectedNodeId(onAddHostAt(host));
     setActiveTool("select");
     setHostPickerOpen(false);
+    setHostPickerSelected(new Set());
+    setHostPickerAnchor(null);
+  }
+
+  function handleHostPickerItemClick(host: DeviceSnapshot, event: React.MouseEvent, visibleList: DeviceSnapshot[]) {
+    event.preventDefault();
+    const id = host.hostId;
+
+    if (event.shiftKey && hostPickerAnchor) {
+      const anchorIdx = visibleList.findIndex((h) => h.hostId === hostPickerAnchor);
+      const clickIdx  = visibleList.findIndex((h) => h.hostId === id);
+      const [from, to] = anchorIdx <= clickIdx ? [anchorIdx, clickIdx] : [clickIdx, anchorIdx];
+      const rangeIds = new Set(visibleList.slice(from, to + 1).map((h) => h.hostId));
+      if (event.ctrlKey || event.metaKey) {
+        setHostPickerSelected((prev) => new Set([...prev, ...rangeIds]));
+      } else {
+        setHostPickerSelected(rangeIds);
+      }
+      // anchor stays unchanged on shift
+    } else if (event.ctrlKey || event.metaKey) {
+      setHostPickerSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+      setHostPickerAnchor(id);
+    } else {
+      setHostPickerSelected(new Set([id]));
+      setHostPickerAnchor(id);
+    }
+  }
+
+  function addSelectedHostsFromPicker() {
+    const toAdd = hostPickerHosts.filter((h) => hostPickerSelected.has(h.hostId));
+    toAdd.forEach((host, i) => {
+      onAddHostAt(host, undefined);
+      // small cascade offset handled by addHostAt's default spread logic
+      void i;
+    });
+    setHostPickerSelected(new Set());
+    setHostPickerAnchor(null);
+    setHostPickerOpen(false);
+    setActiveTool("select");
   }
 
   function openDeviceConfig(node: DeviceFlowNode) {
@@ -1438,9 +1484,44 @@ function TopologyEditor({
               <span className="element-kicker">Adicionar Host</span>
               <h2>Hosts Zabbix</h2>
             </div>
-            <button className="element-close-button" type="button" onClick={() => setHostPickerOpen(false)} aria-label="Fechar">
-              <X size={17} />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="host-picker-edit-menu-wrap">
+                <button
+                  className="host-picker-edit-btn"
+                  type="button"
+                  onClick={() => setHostPickerEditMenuOpen((v) => !v)}
+                  aria-haspopup="true"
+                  aria-expanded={hostPickerEditMenuOpen}
+                  title="Opções de seleção"
+                >
+                  Edição ▾
+                </button>
+                {hostPickerEditMenuOpen ? (
+                  <div className="host-picker-edit-dropdown" role="menu">
+                    <button type="button" role="menuitem" onClick={() => {
+                      setHostPickerSelected(new Set(filteredHostPickerHosts.map((h) => h.hostId)));
+                      setHostPickerEditMenuOpen(false);
+                    }}>Selecionar Tudo</button>
+                    <button type="button" role="menuitem" onClick={() => {
+                      setHostPickerSelected(new Set());
+                      setHostPickerAnchor(null);
+                      setHostPickerEditMenuOpen(false);
+                    }}>Deselecionar Tudo</button>
+                    <button type="button" role="menuitem" onClick={() => {
+                      const visibleIds = new Set(filteredHostPickerHosts.map((h) => h.hostId));
+                      setHostPickerSelected((prev) => new Set([...visibleIds].filter((id) => !prev.has(id))));
+                      setHostPickerEditMenuOpen(false);
+                    }}>Inverter Seleção</button>
+                  </div>
+                ) : null}
+              </div>
+              <button className="element-close-button" type="button" onClick={() => {
+                setHostPickerOpen(false);
+                setHostPickerEditMenuOpen(false);
+              }} aria-label="Fechar">
+                <X size={17} />
+              </button>
+            </div>
           </div>
           <div className="host-picker-controls">
             <label>
@@ -1463,36 +1544,47 @@ function TopologyEditor({
               />
             </label>
           </div>
-          <div className="host-picker-list">
+          <div className="host-picker-list" onMouseDown={() => setHostPickerEditMenuOpen(false)}>
             {hostPickerLoading ? <p className="empty-state">Carregando hosts do Zabbix...</p> : null}
             {hostPickerError ? <p className="empty-state">{hostPickerError}</p> : null}
             {!hostPickerLoading && !hostPickerError && hostPickerServerId ? (
-              <p className="host-picker-count">{hostPickerHosts.length} hosts carregados</p>
+              <p className="host-picker-count">{hostPickerHosts.length} hosts · {hostPickerSelected.size > 0 ? `${hostPickerSelected.size} selecionado${hostPickerSelected.size > 1 ? "s" : ""}` : "nenhum selecionado"}</p>
             ) : null}
-            {!hostPickerLoading && !hostPickerError && filteredHostPickerHosts.map((host) => (
-              <button
-                key={host.hostId}
-                className="host-picker-item"
-                type="button"
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData("application/tek-map-host", host.hostId);
-                  event.dataTransfer.effectAllowed = "copy";
-                }}
-                onClick={() => addHostFromPicker(host)}
-              >
-                <span className={`status-dot ${host.status}`} />
-                <span>
-                  <strong>{host.visibleName}</strong>
-                  <small>{host.hostName}</small>
-                </span>
-              </button>
-            ))}
+            {!hostPickerLoading && !hostPickerError && filteredHostPickerHosts.map((host) => {
+              const isSelected = hostPickerSelected.has(host.hostId);
+              return (
+                <button
+                  key={host.hostId}
+                  className={`host-picker-item${isSelected ? " host-picker-item--selected" : ""}`}
+                  type="button"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("application/tek-map-host", host.hostId);
+                    event.dataTransfer.effectAllowed = "copy";
+                  }}
+                  onClick={(e) => handleHostPickerItemClick(host, e, filteredHostPickerHosts)}
+                  onDoubleClick={() => addHostFromPicker(host)}
+                >
+                  <span className={`status-dot ${host.status}`} />
+                  <span>
+                    <strong>{host.visibleName}</strong>
+                    <small>{host.hostName}</small>
+                  </span>
+                </button>
+              );
+            })}
             {!hostPickerLoading && !hostPickerError && hostPickerServerId && filteredHostPickerHosts.length === 0 ? (
               <p className="empty-state">Nenhum host encontrado para este servidor.</p>
             ) : null}
             {!hostPickerServerId ? <p className="empty-state">Selecione um servidor Zabbix para listar os hosts.</p> : null}
           </div>
+          {hostPickerSelected.size > 0 ? (
+            <div className="host-picker-footer">
+              <button className="element-save-button" type="button" onClick={addSelectedHostsFromPicker}>
+                <Plus size={15} /> Adicionar {hostPickerSelected.size} host{hostPickerSelected.size > 1 ? "s" : ""}
+              </button>
+            </div>
+          ) : null}
         </aside>
       ) : null}
       {configNode ? (

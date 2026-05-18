@@ -624,6 +624,82 @@ select {
   color: #8d99a6;
 }
 
+.host-picker-item {
+  user-select: none;
+}
+
+.host-picker-item--selected {
+  background: #0e2040;
+  border-color: #3b82f6;
+  box-shadow: inset 0 0 0 1px #3b82f6;
+}
+
+.host-picker-item--selected:hover {
+  background: #112a52;
+  border-color: #60a5fa;
+}
+
+.host-picker-footer {
+  padding-top: 4px;
+  border-top: 1px solid #1a2030;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.host-picker-edit-menu-wrap {
+  position: relative;
+}
+
+.host-picker-edit-btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #202a3a;
+  border-radius: 6px;
+  background: #0b1020;
+  color: #8d99a6;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.host-picker-edit-btn:hover {
+  background: #111318;
+  color: #e7eef2;
+  border-color: #3a526d;
+}
+
+.host-picker-edit-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 180px;
+  background: #0c0f14;
+  border: 1px solid #202a3a;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  display: grid;
+  gap: 2px;
+}
+
+.host-picker-edit-dropdown button {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #c9d5e0;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.host-picker-edit-dropdown button:hover {
+  background: #1a2535;
+  color: #e7eef2;
+}
+
 .palette-list {
   display: flex;
   flex-direction: column;
