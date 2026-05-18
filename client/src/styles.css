@@ -568,6 +568,14 @@ select {
   color: #ffffff;
 }
 
+.toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: #202833;
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
 .create-tool-menu button {
   min-height: 38px;
   display: flex;

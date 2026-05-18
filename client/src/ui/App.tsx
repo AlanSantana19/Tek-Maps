@@ -13,6 +13,7 @@ import {
   Lock,
   LogOut,
   Link2,
+  Magnet,
   MapIcon,
   Maximize2,
   Minimize2,
@@ -1398,6 +1399,7 @@ function TopologyEditor({
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
 }) {
+  const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<"basic" | "zabbix">("basic");
@@ -1906,6 +1908,16 @@ function TopologyEditor({
             <button className={`tool-button ${bulkEditOpen ? "active" : ""}`} type="button" onClick={() => setBulkEditOpen((v) => !v)} title="Editar todos os elementos" aria-label="Editar todos os elementos">
               <Layers size={17} />
             </button>
+            <div className="toolbar-divider" />
+            <button
+              className={`tool-button ${snapEnabled ? "active" : ""}`}
+              type="button"
+              onClick={() => setSnapEnabled((v) => !v)}
+              title={snapEnabled ? "Snap to grid ativo — clique para desativar" : "Snap to grid inativo — clique para ativar"}
+              aria-label="Alternar snap to grid"
+            >
+              <Magnet size={17} />
+            </button>
           </div>
           <div className="editor-side-actions">
             <button className="tool-button save-tool-button" onClick={onSave} disabled={saving} title="Salvar" aria-label="Salvar">
@@ -1927,6 +1939,7 @@ function TopologyEditor({
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodesDraggable
+          snapEnabled={snapEnabled}
         />
       </section>
       {hostPickerOpen ? (
@@ -3934,7 +3947,8 @@ function TopologyCanvas({
   onNodesChange,
   onEdgesChange,
   onConnect,
-  nodesDraggable
+  nodesDraggable,
+  snapEnabled = true
 }: {
   nodes: DeviceFlowNode[];
   edges: Edge[];
@@ -3950,6 +3964,7 @@ function TopologyCanvas({
   onEdgesChange?: OnEdgesChange<Edge>;
   onConnect?: (connection: Connection) => void;
   nodesDraggable?: boolean;
+  snapEnabled?: boolean;
 }) {
   return (
     <section className="canvas">
@@ -3972,7 +3987,7 @@ function TopologyCanvas({
           nodesDraggable={!readonly && (nodesDraggable ?? true)}
           nodesConnectable={!readonly}
           elementsSelectable={!readonly}
-          snapToGrid={!readonly}
+          snapToGrid={!readonly && snapEnabled}
           snapGrid={[40, 40]}
           proOptions={{ hideAttribution: true }}
           fitView
