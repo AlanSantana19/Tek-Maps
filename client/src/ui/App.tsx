@@ -3972,6 +3972,8 @@ function TopologyCanvas({
           nodesDraggable={!readonly && (nodesDraggable ?? true)}
           nodesConnectable={!readonly}
           elementsSelectable={!readonly}
+          snapToGrid={!readonly}
+          snapGrid={[40, 40]}
           proOptions={{ hideAttribution: true }}
           fitView
         >
