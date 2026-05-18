@@ -113,7 +113,7 @@ export function LinkEdge({
   const hasSignalData = showSignal && (!!signalTxItem || !!signalRxItem);
   const showBadge     = showTraffic && hasInterfaces;
 
-  const cableTypeLabel = data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
+  const cableTypeLabel = (data?.showLabel ?? true) && data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
   const sourceIfName   = data?.sourceInterfaceName
     ?? (data?.sourceOutInterface ? `if-${data.sourceOutInterface}` : undefined);
 
