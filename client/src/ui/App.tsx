@@ -150,6 +150,10 @@ type LinkEdgeData = {
   showLabel?: boolean;
   waypointDX?: number;
   waypointDY?: number;
+  showSignal?: boolean;
+  signalLabel?: string;
+  signalTxMetricKey?: string;
+  signalRxMetricKey?: string;
 };
 
 type PaletteItem = {
@@ -1013,7 +1017,11 @@ function TopologyEditor({
     lineStyle: "solid" as LineStyle,
     badgeFontSize: 10,
     showTraffic: true,
-    showLabel: true
+    showLabel: true,
+    showSignal: false,
+    signalLabel: "",
+    signalTxMetricKey: "",
+    signalRxMetricKey: ""
   });
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
   const [zabbixServers, setZabbixServers] = useState<ZabbixServerConfig[]>([]);
@@ -1187,7 +1195,11 @@ function TopologyEditor({
       lineStyle: data?.lineStyle ?? "solid",
       badgeFontSize: data?.badgeFontSize ?? 10,
       showTraffic: data?.showTraffic ?? true,
-      showLabel: data?.showLabel ?? true
+      showLabel: data?.showLabel ?? true,
+      showSignal: data?.showSignal ?? false,
+      signalLabel: data?.signalLabel ?? "",
+      signalTxMetricKey: data?.signalTxMetricKey ?? "",
+      signalRxMetricKey: data?.signalRxMetricKey ?? ""
     });
   }
 
@@ -1215,7 +1227,11 @@ function TopologyEditor({
       lineStyle: linkForm.lineStyle,
       badgeFontSize: Number(linkForm.badgeFontSize) || 10,
       showTraffic: linkForm.showTraffic,
-      showLabel: linkForm.showLabel
+      showLabel: linkForm.showLabel,
+      showSignal: linkForm.showSignal,
+      signalLabel: linkForm.signalLabel.trim() || undefined,
+      signalTxMetricKey: linkForm.signalTxMetricKey || undefined,
+      signalRxMetricKey: linkForm.signalRxMetricKey || undefined
     };
 
     if (selectedEdgeId) {
@@ -2054,6 +2070,44 @@ function TopologyEditor({
                 <span>Exibir nome do cabo</span>
               </label>
             </div>
+          </div>
+
+          <div className="element-section">
+            <div className="element-section-title"><Activity size={14} />Sinal</div>
+            <label className="element-checkbox">
+              <input type="checkbox" checked={linkForm.showSignal} onChange={(e) => setLinkForm({ ...linkForm, showSignal: e.target.checked })} />
+              <span>Exibir informações de sinal no tooltip</span>
+            </label>
+            {linkForm.showSignal && (
+              <>
+                <label>
+                  Rótulo do sinal
+                  <input
+                    value={linkForm.signalLabel}
+                    onChange={(e) => setLinkForm({ ...linkForm, signalLabel: e.target.value })}
+                    placeholder="ex: Fibra Óptica, RSSI..."
+                  />
+                </label>
+                <label>
+                  Métrica TX de sinal
+                  <select value={linkForm.signalTxMetricKey} onChange={(e) => setLinkForm({ ...linkForm, signalTxMetricKey: e.target.value })}>
+                    <option value="">— nenhuma —</option>
+                    {(draftSourceNode?.data.snapshot?.metrics ?? []).map((m) => (
+                      <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Métrica RX de sinal
+                  <select value={linkForm.signalRxMetricKey} onChange={(e) => setLinkForm({ ...linkForm, signalRxMetricKey: e.target.value })}>
+                    <option value="">— nenhuma —</option>
+                    {(draftSourceNode?.data.snapshot?.metrics ?? []).map((m) => (
+                      <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
           </div>
 
           <div className="element-footer">
@@ -2900,7 +2954,11 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       showTraffic: edge.showTraffic,
       showLabel: edge.showLabel,
       waypointDX: edge.waypointDX,
-      waypointDY: edge.waypointDY
+      waypointDY: edge.waypointDY,
+      showSignal: edge.showSignal,
+      signalLabel: edge.signalLabel,
+      signalTxMetricKey: edge.signalTxMetricKey,
+      signalRxMetricKey: edge.signalRxMetricKey
     }
   });
 }
@@ -2938,7 +2996,11 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     showTraffic: data?.showTraffic,
     showLabel: data?.showLabel,
     waypointDX: data?.waypointDX,
-    waypointDY: data?.waypointDY
+    waypointDY: data?.waypointDY,
+    showSignal: data?.showSignal,
+    signalLabel: data?.signalLabel,
+    signalTxMetricKey: data?.signalTxMetricKey,
+    signalRxMetricKey: data?.signalRxMetricKey
   };
 }
 
@@ -2979,7 +3041,11 @@ function defaultLinkForm() {
     lineStyle: "solid" as LineStyle,
     badgeFontSize: 10,
     showTraffic: true,
-    showLabel: true
+    showLabel: true,
+    showSignal: false,
+    signalLabel: "",
+    signalTxMetricKey: "",
+    signalRxMetricKey: ""
   };
 }
 

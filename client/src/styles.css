@@ -2377,3 +2377,52 @@ select {
   max-height: 48px;
   object-fit: contain;
 }
+
+/* Edge hover tooltip */
+.edge-tooltip {
+  background: #0c0f14;
+  border: 1px solid #273244;
+  border-radius: 6px;
+  padding: 8px 10px;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #aebdcc;
+  white-space: nowrap;
+}
+
+.edge-tooltip-title {
+  color: #dbe7ed;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.edge-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.edge-tooltip-label {
+  color: #6e8898;
+  font-weight: 600;
+}
+
+.edge-tooltip-value {
+  color: #dbe7ed;
+  font-weight: 600;
+  text-align: right;
+}
+
+.edge-tooltip-tx { color: #e8a838; }
+.edge-tooltip-rx { color: #5ba4cf; }
+.edge-tooltip-up { color: #4caf81; }
+.edge-tooltip-down { color: #ef4444; font-weight: 800; }
+
+.edge-tooltip-divider {
+  border-top: 1px solid #1e2c3a;
+  margin: 6px 0;
+}

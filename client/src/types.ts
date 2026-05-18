@@ -101,6 +101,10 @@ export interface Topology {
     showLabel?: boolean;
     waypointDX?: number;
     waypointDY?: number;
+    showSignal?: boolean;
+    signalLabel?: string;
+    signalTxMetricKey?: string;
+    signalRxMetricKey?: string;
   }>;
 }
 

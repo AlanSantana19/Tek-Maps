@@ -1,6 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, useReactFlow } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import type { DeviceSnapshot } from "../types";
 
 export type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
@@ -32,6 +32,10 @@ export type LinkEdgePayload = {
   showLabel?: boolean;
   waypointDX?: number;
   waypointDY?: number;
+  showSignal?: boolean;
+  signalLabel?: string;
+  signalTxMetricKey?: string;
+  signalRxMetricKey?: string;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
@@ -52,6 +56,8 @@ export function LinkEdge({
   const data = rawData as LinkEdgePayload | undefined;
   const snapshots = useContext(SnapshotsContext);
   const { setEdges, screenToFlowPosition } = useReactFlow();
+  const [hovered, setHovered] = useState(false);
+  const [tooltipAbove, setTooltipAbove] = useState(true);
 
   const waypointDX = data?.waypointDX ?? 0;
   const waypointDY = data?.waypointDY ?? 0;
@@ -96,6 +102,12 @@ export function LinkEdge({
                 : totalBps >= 1e6 ? "2s"
                 : "3s";
 
+  const showSignal = data?.showSignal ?? false;
+  const signalLabel = data?.signalLabel;
+  const sourceMetrics = data?.sourceHostId ? (snapshots.get(data.sourceHostId)?.metrics ?? []) : [];
+  const signalTxItem = data?.signalTxMetricKey ? sourceMetrics.find((m) => m.key === data!.signalTxMetricKey) : undefined;
+  const signalRxItem = data?.signalRxMetricKey ? sourceMetrics.find((m) => m.key === data!.signalRxMetricKey) : undefined;
+
   const cableTypeLabel = data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
   const sourceIfName   = data?.sourceInterfaceName
     ?? (data?.sourceOutInterface ? `if-${data.sourceOutInterface}` : undefined);
@@ -111,13 +123,10 @@ export function LinkEdge({
   const pulsePathId = `pulse-path-${id}`;
   const badgeW = 76;
 
-  const tooltipText = [
-    cableTypeLabel   ? `Tipo: ${cableTypeLabel}` : null,
-    sourceIfName     ? `Interface: ${sourceIfName}${data?.sourceInterfaceAlias ? ` (${data.sourceInterfaceAlias})` : ""}` : null,
-    `Status: ${isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}`,
-    `TX: ${formatBps(txBps)}`,
-    `RX: ${formatBps(rxBps)}`,
-  ].filter(Boolean).join("\n");
+  function handleBadgeMouseEnter(e: React.MouseEvent) {
+    setHovered(true);
+    setTooltipAbove(e.clientY > 140);
+  }
 
   function startWaypointDrag(e: React.MouseEvent) {
     e.stopPropagation();
@@ -220,7 +229,8 @@ export function LinkEdge({
         {showTraffic && hasInterfaces ? (
           <div
             className="nodrag nopan"
-            title={tooltipText}
+            onMouseEnter={handleBadgeMouseEnter}
+            onMouseLeave={() => setHovered(false)}
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${wpX}px, ${wpY}px)`,
@@ -258,6 +268,67 @@ export function LinkEdge({
                 </div>
               </>
             )}
+          </div>
+        ) : null}
+
+        {/* Hover tooltip */}
+        {showTraffic && hasInterfaces && hovered ? (
+          <div
+            className="edge-tooltip"
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, ${tooltipAbove ? "calc(-100% - 10px)" : "10px"}) translate(${wpX}px, ${wpY}px)`,
+              pointerEvents: "none",
+              zIndex: 20,
+            }}
+          >
+            {cableTypeLabel && (
+              <div className="edge-tooltip-title">{cableTypeLabel}</div>
+            )}
+            {sourceIfName && (
+              <div className="edge-tooltip-row">
+                <span className="edge-tooltip-label">Interface</span>
+                <span className="edge-tooltip-value">
+                  {sourceIfName}{data?.sourceInterfaceAlias ? ` (${data.sourceInterfaceAlias})` : ""}
+                </span>
+              </div>
+            )}
+            <div className="edge-tooltip-row">
+              <span className="edge-tooltip-label">Status</span>
+              <span className={`edge-tooltip-value ${isDown ? "edge-tooltip-down" : "edge-tooltip-up"}`}>
+                {isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}
+              </span>
+            </div>
+            <div className="edge-tooltip-row">
+              <span className="edge-tooltip-label edge-tooltip-tx">TX</span>
+              <span className="edge-tooltip-value">{formatBps(txBps)}</span>
+            </div>
+            <div className="edge-tooltip-row">
+              <span className="edge-tooltip-label edge-tooltip-rx">RX</span>
+              <span className="edge-tooltip-value">{formatBps(rxBps)}</span>
+            </div>
+            {showSignal && (signalTxItem || signalRxItem) ? (
+              <>
+                <div className="edge-tooltip-divider" />
+                {signalLabel && <div className="edge-tooltip-title">{signalLabel}</div>}
+                {signalTxItem && (
+                  <div className="edge-tooltip-row">
+                    <span className="edge-tooltip-label edge-tooltip-tx">Sinal TX</span>
+                    <span className="edge-tooltip-value">
+                      {String(signalTxItem.value)}{signalTxItem.unit ? ` ${signalTxItem.unit}` : ""}
+                    </span>
+                  </div>
+                )}
+                {signalRxItem && (
+                  <div className="edge-tooltip-row">
+                    <span className="edge-tooltip-label edge-tooltip-rx">Sinal RX</span>
+                    <span className="edge-tooltip-value">
+                      {String(signalRxItem.value)}{signalRxItem.unit ? ` ${signalRxItem.unit}` : ""}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : null}
           </div>
         ) : null}
       </EdgeLabelRenderer>
