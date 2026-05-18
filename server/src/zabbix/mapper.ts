@@ -87,7 +87,7 @@ function extractMetrics(items: ZabbixItem[]): DeviceMetric[] {
     { key: "disk", label: "Disco", match: /disk|vfs\.fs/i }
   ];
 
-  return patterns.flatMap((pattern) => {
+  const standard = patterns.flatMap((pattern) => {
     const item = items.find((candidate) => pattern.match.test(candidate.key_) || pattern.match.test(candidate.name));
     if (!item) {
       return [];
@@ -101,6 +101,22 @@ function extractMetrics(items: ZabbixItem[]): DeviceMetric[] {
       updatedAt: item.lastclock ? new Date(Number(item.lastclock) * 1000).toISOString() : undefined
     }];
   });
+
+  const optical = items
+    .filter((item) =>
+      item.units === "dBm" ||
+      /optical|sfp|pon|rx\.power|tx\.power|optic/i.test(item.key_) ||
+      /optical|sfp|pon|rx power|tx power|optical power/i.test(item.name)
+    )
+    .map<DeviceMetric>((item) => ({
+      key: item.key_,
+      label: item.name,
+      value: parseNumeric(item.lastvalue),
+      unit: item.units || "dBm",
+      updatedAt: item.lastclock ? new Date(Number(item.lastclock) * 1000).toISOString() : undefined
+    }));
+
+  return [...standard, ...optical];
 }
 
 function extractPorts(items: ZabbixItem[]): PortMetric[] {

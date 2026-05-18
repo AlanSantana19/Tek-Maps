@@ -97,6 +97,11 @@ export interface TopologyEdge {
   showLabel?: boolean;
   waypointDX?: number;
   waypointDY?: number;
+  showSignal?: boolean;
+  signalLabel?: string;
+  signalTxMetricKey?: string;
+  signalRxMetricKey?: string;
+  signalHostId?: string;
 }
 
 export interface Topology {

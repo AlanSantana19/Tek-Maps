@@ -101,6 +101,21 @@ export class AccessGroupRepository {
     return result.rows.map(mapMember);
   }
 
+  async listGroupsForUser(userId: string): Promise<AccessGroupRecord[]> {
+    await this.ensureSchema();
+    const result = await this.db.query(`
+      SELECT g.id, g.name, g.description, g.role, g.created_at,
+             COUNT(m2.user_id)::int AS member_count
+      FROM access_group_members m
+      JOIN access_groups g ON g.id = m.group_id
+      LEFT JOIN access_group_members m2 ON m2.group_id = g.id
+      WHERE m.user_id = $1
+      GROUP BY g.id
+      ORDER BY g.name ASC
+    `, [userId]);
+    return result.rows.map(mapGroup);
+  }
+
   async addMember(groupId: string, userId: string): Promise<void> {
     await this.ensureSchema();
     await this.db.query(

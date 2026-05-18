@@ -36,6 +36,7 @@ export type LinkEdgePayload = {
   signalLabel?: string;
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
+  signalHostId?: string;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
@@ -104,9 +105,13 @@ export function LinkEdge({
 
   const showSignal = data?.showSignal ?? false;
   const signalLabel = data?.signalLabel;
-  const sourceMetrics = data?.sourceHostId ? (snapshots.get(data.sourceHostId)?.metrics ?? []) : [];
-  const signalTxItem = data?.signalTxMetricKey ? sourceMetrics.find((m) => m.key === data!.signalTxMetricKey) : undefined;
-  const signalRxItem = data?.signalRxMetricKey ? sourceMetrics.find((m) => m.key === data!.signalRxMetricKey) : undefined;
+  const signalHostId = data?.signalHostId ?? data?.sourceHostId;
+  const signalMetrics = signalHostId ? (snapshots.get(signalHostId)?.metrics ?? []) : [];
+  const signalTxItem = data?.signalTxMetricKey ? signalMetrics.find((m) => m.key === data!.signalTxMetricKey) : undefined;
+  const signalRxItem = data?.signalRxMetricKey ? signalMetrics.find((m) => m.key === data!.signalRxMetricKey) : undefined;
+
+  const hasSignalData = showSignal && (!!signalTxItem || !!signalRxItem);
+  const showBadge     = showTraffic && hasInterfaces;
 
   const cableTypeLabel = data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
   const sourceIfName   = data?.sourceInterfaceName
@@ -225,8 +230,8 @@ export function LinkEdge({
           />
         ) : null}
 
-        {/* TX/RX badge */}
-        {showTraffic && hasInterfaces ? (
+        {/* TX/RX + Signal badge */}
+        {showBadge ? (
           <div
             className="nodrag nopan"
             onMouseEnter={handleBadgeMouseEnter}
@@ -272,7 +277,7 @@ export function LinkEdge({
         ) : null}
 
         {/* Hover tooltip */}
-        {showTraffic && hasInterfaces && hovered ? (
+        {(showBadge || hasSignalData) && hovered ? (
           <div
             className="edge-tooltip"
             style={{
@@ -285,31 +290,27 @@ export function LinkEdge({
             {cableTypeLabel && (
               <div className="edge-tooltip-title">{cableTypeLabel}</div>
             )}
-            {sourceIfName && (
-              <div className="edge-tooltip-row">
-                <span className="edge-tooltip-label">Interface</span>
-                <span className="edge-tooltip-value">
-                  {sourceIfName}{data?.sourceInterfaceAlias ? ` (${data.sourceInterfaceAlias})` : ""}
-                </span>
-              </div>
-            )}
-            <div className="edge-tooltip-row">
-              <span className="edge-tooltip-label">Status</span>
-              <span className={`edge-tooltip-value ${isDown ? "edge-tooltip-down" : "edge-tooltip-up"}`}>
-                {isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}
-              </span>
-            </div>
-            <div className="edge-tooltip-row">
-              <span className="edge-tooltip-label edge-tooltip-tx">TX</span>
-              <span className="edge-tooltip-value">{formatBps(txBps)}</span>
-            </div>
-            <div className="edge-tooltip-row">
-              <span className="edge-tooltip-label edge-tooltip-rx">RX</span>
-              <span className="edge-tooltip-value">{formatBps(rxBps)}</span>
-            </div>
-            {showSignal && (signalTxItem || signalRxItem) ? (
+            {hasInterfaces && (
               <>
-                <div className="edge-tooltip-divider" />
+                <div className="edge-tooltip-row">
+                  <span className="edge-tooltip-label">Status</span>
+                  <span className={`edge-tooltip-value ${isDown ? "edge-tooltip-down" : "edge-tooltip-up"}`}>
+                    {isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}
+                  </span>
+                </div>
+                <div className="edge-tooltip-row">
+                  <span className="edge-tooltip-label edge-tooltip-tx">TX</span>
+                  <span className="edge-tooltip-value">{formatBps(txBps)}</span>
+                </div>
+                <div className="edge-tooltip-row">
+                  <span className="edge-tooltip-label edge-tooltip-rx">RX</span>
+                  <span className="edge-tooltip-value">{formatBps(rxBps)}</span>
+                </div>
+              </>
+            )}
+            {hasSignalData ? (
+              <>
+                {hasInterfaces && <div className="edge-tooltip-divider" />}
                 {signalLabel && <div className="edge-tooltip-title">{signalLabel}</div>}
                 {signalTxItem && (
                   <div className="edge-tooltip-row">

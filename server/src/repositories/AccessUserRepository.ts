@@ -39,6 +39,17 @@ export class AccessUserRepository {
     return result.rows.map(mapUser);
   }
 
+  async getByEmail(email: string): Promise<AccessUserRecord | null> {
+    const result = await this.db.query(
+      `SELECT id, name, email, role, active, created_at
+       FROM access_users
+       WHERE lower(email) = lower($1)
+         AND active = true`,
+      [email]
+    );
+    return result.rows[0] ? mapUser(result.rows[0]) : null;
+  }
+
   async create(user: NewAccessUser): Promise<AccessUserRecord> {
     const id = crypto.randomUUID();
     const passwordHash = user.password ? await bcrypt.hash(user.password, BCRYPT_ROUNDS) : null;
