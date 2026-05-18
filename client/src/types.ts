@@ -191,3 +191,94 @@ export interface AccessGroupMember {
   role: "admin" | "operator" | "viewer";
   joinedAt: string;
 }
+
+export type PermissionKey = "view" | "edit";
+
+export interface UserMapPermission {
+  userId: string;
+  topologyId: string;
+  permissions: PermissionKey[];
+  updatedAt?: string;
+}
+
+export interface UserMenuPermission {
+  userId: string;
+  menuId: string;
+  permissions: PermissionKey[];
+  updatedAt?: string;
+}
+
+export interface GroupMapPermission {
+  groupId: string;
+  topologyId: string;
+  permissions: PermissionKey[];
+  updatedAt?: string;
+}
+
+export interface GroupMenuPermission {
+  groupId: string;
+  menuId: string;
+  permissions: PermissionKey[];
+  updatedAt?: string;
+}
+
+export interface MapPermissionAuditEntry {
+  id: number;
+  actorEmail: string;
+  userId: string;
+  topologyId: string;
+  previousPermissions: PermissionKey[];
+  nextPermissions: PermissionKey[];
+  createdAt: string;
+}
+
+export interface MenuPermissionAuditEntry {
+  id: number;
+  actorEmail: string;
+  userId: string;
+  menuId: string;
+  previousPermissions: PermissionKey[];
+  nextPermissions: PermissionKey[];
+  createdAt: string;
+}
+
+export interface MapPermissionAdminState {
+  users: AccessUser[];
+  groups: AccessGroup[];
+  topologies: Array<Topology & { id: string }>;
+  permissions: UserMapPermission[];
+  mapPermissions?: UserMapPermission[];
+  menuPermissions: UserMenuPermission[];
+  groupMapPermissions: GroupMapPermission[];
+  groupMenuPermissions: GroupMenuPermission[];
+  audit: MapPermissionAuditEntry[];
+  menuAudit: MenuPermissionAuditEntry[];
+}
+
+export interface CurrentUserPermissions {
+  user: AccessUser;
+  fullAccess: boolean;
+  menuPermissions: UserMenuPermission[];
+  mapPermissions: UserMapPermission[];
+}
+
+export interface LoginLogoConfig {
+  dataUrl?: string;
+  width: number;
+  offsetX: number;
+  offsetY: number;
+  backgroundColor: string;
+  titleColor: string;
+  updatedAt?: string;
+}
+
+export interface NavLogoConfig {
+  dataUrl?: string;
+  width: number;
+  updatedAt?: string;
+}
+
+export interface FaviconConfig {
+  dataUrl?: string;
+  updatedAt?: string;
+}

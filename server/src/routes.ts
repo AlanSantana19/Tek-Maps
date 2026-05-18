@@ -1,10 +1,11 @@
 import express from "express";
 import { z } from "zod";
-import { requireAuth, signUserToken } from "./auth.js";
+import { type AuthRequest, requireAuth, signUserToken } from "./auth.js";
 import { appVersion } from "./version.js";
 import type { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import type { AccessUserRepository } from "./repositories/AccessUserRepository.js";
 import type { CustomIconRepository } from "./repositories/CustomIconRepository.js";
+import type { MapPermissionRepository } from "./repositories/MapPermissionRepository.js";
 import type { SettingsRepository } from "./repositories/SettingsRepository.js";
 import type { TopologyRepository } from "./repositories/TopologyRepository.js";
 import type { ZabbixCacheRepository } from "./repositories/ZabbixCacheRepository.js";
@@ -117,18 +118,80 @@ const passwordResetSchema = z.object({
 
 const MAX_ICON_DATA_URL_BYTES = 1_500_000;
 
+const permissionKeySchema = z.enum(["view", "edit"]);
+const mapPermissionUpdateSchema = z.object({
+  permissions: z.array(z.object({
+    topologyId: z.string().uuid(),
+    permissions: z.array(permissionKeySchema)
+  }))
+});
+const granularPermissionUpdateSchema = z.object({
+  menuPermissions: z.array(z.object({
+    menuId: z.string().min(1).max(80),
+    permissions: z.array(permissionKeySchema)
+  })),
+  mapPermissions: z.array(z.object({
+    topologyId: z.string().uuid(),
+    permissions: z.array(permissionKeySchema)
+  }))
+});
+const groupGranularPermissionUpdateSchema = granularPermissionUpdateSchema;
+
+const loginLogoConfigSchema = z.object({
+  dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional(),
+  width: z.number().min(48).max(240),
+  offsetX: z.number().min(-120).max(120),
+  offsetY: z.number().min(-80).max(80),
+  backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  titleColor: z.string().regex(/^#[0-9a-f]{6}$/i)
+});
+
+const navLogoConfigSchema = z.object({
+  dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional(),
+  width: z.number().min(40).max(240)
+});
+
+const faviconConfigSchema = z.object({
+  dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional()
+});
+
 export function createRoutes(
   topologies: TopologyRepository,
   cache: ZabbixCacheRepository,
   settings: SettingsRepository,
   users: AccessUserRepository,
   icons: CustomIconRepository,
-  groups: AccessGroupRepository
+  groups: AccessGroupRepository,
+  mapPermissions: MapPermissionRepository
 ) {
   const router = express.Router();
 
   router.get("/health", (_req, res) => res.json({ ok: true }));
   router.get("/version", (_req, res) => res.json(appVersion));
+
+  router.get("/branding/login-logo", async (_req, res, next) => {
+    try {
+      res.json(await settings.getLoginLogoConfig());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/branding/nav-logo", async (_req, res, next) => {
+    try {
+      res.json(await settings.getNavLogoConfig());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/branding/favicon", async (_req, res, next) => {
+    try {
+      res.json(await settings.getFaviconConfig());
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.post("/auth/login", (req, res) => {
     const parsed = z.object({
@@ -155,6 +218,44 @@ export function createRoutes(
   });
 
   router.use(requireAuth);
+
+  router.get("/me/permissions", async (req: AuthRequest, res, next) => {
+    try {
+      const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+      if (!currentUser) {
+        res.status(404).json({ error: "user_not_found" });
+        return;
+      }
+      if (currentUser.role === "admin") {
+        res.json({ user: currentUser, menuPermissions: [], mapPermissions: [], fullAccess: true });
+        return;
+      }
+      const [menuPermissionList, mapPermissionList, userGroups, groupMenuPermissionList, groupMapPermissionList] = await Promise.all([
+        mapPermissions.listMenus(),
+        mapPermissions.list(),
+        groups.listGroupsForUser(currentUser.id),
+        mapPermissions.listGroupMenus(),
+        mapPermissions.listGroups()
+      ]);
+      const groupIds = new Set(userGroups.map((group) => group.id));
+      const effectiveMenuPermissions = mergePermissionRows(
+        menuPermissionList.filter((entry) => entry.userId === currentUser.id).map((entry) => ({ resourceId: entry.menuId, permissions: entry.permissions })),
+        groupMenuPermissionList.filter((entry) => groupIds.has(entry.groupId)).map((entry) => ({ resourceId: entry.menuId, permissions: entry.permissions }))
+      ).map((entry) => ({ userId: currentUser.id, menuId: entry.resourceId, permissions: entry.permissions }));
+      const effectiveMapPermissions = mergePermissionRows(
+        mapPermissionList.filter((entry) => entry.userId === currentUser.id).map((entry) => ({ resourceId: entry.topologyId, permissions: entry.permissions })),
+        groupMapPermissionList.filter((entry) => groupIds.has(entry.groupId)).map((entry) => ({ resourceId: entry.topologyId, permissions: entry.permissions }))
+      ).map((entry) => ({ userId: currentUser.id, topologyId: entry.resourceId, permissions: entry.permissions }));
+      res.json({
+        user: currentUser,
+        fullAccess: false,
+        menuPermissions: effectiveMenuPermissions,
+        mapPermissions: effectiveMapPermissions
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.get("/zabbix/hosts", async (req, res, next) => {
     try {
@@ -409,6 +510,59 @@ export function createRoutes(
     }
   });
 
+  router.use("/admin", requireAdmin);
+
+  router.put("/admin/branding/login-logo", async (req, res, next) => {
+    try {
+      const parsed = loginLogoConfigSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_login_logo_config", details: parsed.error.flatten() });
+        return;
+      }
+      if (parsed.data.dataUrl && !parsed.data.dataUrl.startsWith("data:image/")) {
+        res.status(400).json({ error: "invalid_login_logo_config", message: "Arquivo precisa ser uma imagem." });
+        return;
+      }
+      res.json(await settings.saveLoginLogoConfig(parsed.data));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/admin/branding/favicon", async (req, res, next) => {
+    try {
+      const parsed = faviconConfigSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_favicon_config", details: parsed.error.flatten() });
+        return;
+      }
+      if (parsed.data.dataUrl && !parsed.data.dataUrl.startsWith("data:image/")) {
+        res.status(400).json({ error: "invalid_favicon_config", message: "Arquivo precisa ser uma imagem." });
+        return;
+      }
+      res.json(await settings.saveFaviconConfig(parsed.data));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/admin/branding/nav-logo", async (req, res, next) => {
+    try {
+      const parsed = navLogoConfigSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_nav_logo_config", details: parsed.error.flatten() });
+        return;
+      }
+      if (parsed.data.dataUrl && !parsed.data.dataUrl.startsWith("data:image/")) {
+        res.status(400).json({ error: "invalid_nav_logo_config", message: "Arquivo precisa ser uma imagem." });
+        return;
+      }
+      res.json(await settings.saveNavLogoConfig(parsed.data));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/admin/users", async (_req, res, next) => {
     try {
       res.json(await users.list());
@@ -568,20 +722,161 @@ export function createRoutes(
     }
   });
 
-  router.get("/topologies", async (_req, res, next) => {
+  router.get("/admin/map-permissions", async (_req, res, next) => {
     try {
-      res.json(await topologies.list());
+      const [userList, groupList, topologyList, permissionList, menuPermissionList, groupPermissionList, groupMenuPermissionList, audit, menuAudit] = await Promise.all([
+        users.list(),
+        groups.list(),
+        topologies.list(),
+        mapPermissions.list(),
+        mapPermissions.listMenus(),
+        mapPermissions.listGroups(),
+        mapPermissions.listGroupMenus(),
+        mapPermissions.listAudit(),
+        mapPermissions.listMenuAudit()
+      ]);
+      res.json({
+        users: userList,
+        groups: groupList,
+        topologies: topologyList,
+        permissions: permissionList,
+        mapPermissions: permissionList,
+        menuPermissions: menuPermissionList,
+        groupMapPermissions: groupPermissionList,
+        groupMenuPermissions: groupMenuPermissionList,
+        audit,
+        menuAudit
+      });
     } catch (error) {
       next(error);
     }
   });
 
-  router.get("/topologies/:id", async (req, res, next) => {
+  router.put("/admin/users/:id/granular-permissions", async (req: AuthRequest, res, next) => {
     try {
-      const topology = await topologies.get(req.params.id);
+      const parsed = granularPermissionUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_granular_permissions", details: parsed.error.flatten() });
+        return;
+      }
+
+      const [savedMenuPermissions, savedMapPermissions] = await Promise.all([
+        mapPermissions.replaceMenusForUser(
+          String(req.params.id),
+          parsed.data.menuPermissions,
+          req.user?.sub ?? "unknown"
+        ),
+        mapPermissions.replaceForUser(
+          String(req.params.id),
+          parsed.data.mapPermissions,
+          req.user?.sub ?? "unknown"
+        )
+      ]);
+      res.json({ menuPermissions: savedMenuPermissions, mapPermissions: savedMapPermissions });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/admin/groups/:id/granular-permissions", async (req, res, next) => {
+    try {
+      const parsed = groupGranularPermissionUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_group_granular_permissions", details: parsed.error.flatten() });
+        return;
+      }
+
+      const [savedMenuPermissions, savedMapPermissions] = await Promise.all([
+        mapPermissions.replaceMenusForGroup(String(req.params.id), parsed.data.menuPermissions),
+        mapPermissions.replaceForGroup(String(req.params.id), parsed.data.mapPermissions)
+      ]);
+      res.json({ menuPermissions: savedMenuPermissions, mapPermissions: savedMapPermissions });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/admin/users/:id/map-permissions", async (req: AuthRequest, res, next) => {
+    try {
+      const parsed = mapPermissionUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_map_permissions", details: parsed.error.flatten() });
+        return;
+      }
+
+      const saved = await mapPermissions.replaceForUser(
+        String(req.params.id),
+        parsed.data.permissions,
+        req.user?.sub ?? "unknown"
+      );
+      res.json(saved);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/topologies", async (req: AuthRequest, res, next) => {
+    try {
+      const topologyList = await topologies.list();
+      if (req.user?.role === "admin") {
+        res.json(topologyList);
+        return;
+      }
+
+      const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+      if (!currentUser) {
+        res.status(404).json({ error: "user_not_found" });
+        return;
+      }
+      const [permissions, userGroups, groupPermissionList] = await Promise.all([
+        mapPermissions.list(),
+        groups.listGroupsForUser(currentUser.id),
+        mapPermissions.listGroups()
+      ]);
+      const groupIds = new Set(userGroups.map((group) => group.id));
+      const viewableTopologyIds = new Set(
+        [
+          ...permissions.filter((entry) => entry.userId === currentUser.id),
+          ...groupPermissionList.filter((entry) => groupIds.has(entry.groupId))
+        ]
+          .filter((entry) => entry.permissions.includes("view"))
+          .map((entry) => entry.topologyId)
+      );
+      res.json(topologyList.filter((topology) => viewableTopologyIds.has(topology.id)));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/topologies/:id", async (req: AuthRequest, res, next) => {
+    try {
+      const topologyId = String(req.params.id);
+      const topology = await topologies.get(topologyId);
       if (!topology) {
         res.status(404).json({ error: "not_found" });
         return;
+      }
+      if (req.user?.role !== "admin") {
+        const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+        const [permissions, userGroups, groupPermissionList] = currentUser ? await Promise.all([
+          mapPermissions.list(),
+          groups.listGroupsForUser(currentUser.id),
+          mapPermissions.listGroups()
+        ]) : [[], [], []];
+        const groupIds = new Set(userGroups.map((group) => group.id));
+        const canView = permissions.some((entry) => (
+          entry.userId === currentUser?.id &&
+          entry.topologyId === topology.id &&
+          entry.permissions.includes("view")
+        )) || groupPermissionList.some((entry) => (
+          groupIds.has(entry.groupId) &&
+          entry.topologyId === topology.id &&
+          entry.permissions.includes("view")
+        ));
+        if (!canView) {
+          res.status(404).json({ error: "not_found" });
+          return;
+        }
       }
       res.json(topology);
     } catch (error) {
@@ -602,12 +897,35 @@ export function createRoutes(
     }
   });
 
-  router.put("/topologies/:id", async (req, res, next) => {
+  router.put("/topologies/:id", async (req: AuthRequest, res, next) => {
     try {
-      const parsed = topologySchema.safeParse({ ...req.body, id: req.params.id });
+      const topologyId = String(req.params.id);
+      const parsed = topologySchema.safeParse({ ...req.body, id: topologyId });
       if (!parsed.success) {
         res.status(400).json({ error: "invalid_topology", details: parsed.error.flatten() });
         return;
+      }
+      if (req.user?.role !== "admin") {
+        const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+        const [permissions, userGroups, groupPermissionList] = currentUser ? await Promise.all([
+          mapPermissions.list(),
+          groups.listGroupsForUser(currentUser.id),
+          mapPermissions.listGroups()
+        ]) : [[], [], []];
+        const groupIds = new Set(userGroups.map((group) => group.id));
+        const canEdit = permissions.some((entry) => (
+          entry.userId === currentUser?.id &&
+          entry.topologyId === topologyId &&
+          entry.permissions.includes("edit")
+        )) || groupPermissionList.some((entry) => (
+          groupIds.has(entry.groupId) &&
+          entry.topologyId === topologyId &&
+          entry.permissions.includes("edit")
+        ));
+        if (!canEdit) {
+          res.status(403).json({ error: "map_edit_required", message: "Usuario sem permissao para editar este mapa." });
+          return;
+        }
       }
       res.json(await topologies.upsert(parsed.data));
     } catch (error) {
@@ -670,6 +988,31 @@ export function createRoutes(
   });
 
   return router;
+}
+
+function requireAdmin(req: AuthRequest, res: express.Response, next: express.NextFunction) {
+  if (req.user?.role !== "admin") {
+    res.status(403).json({ error: "admin_required", message: "Apenas administradores podem modificar permissoes." });
+    return;
+  }
+  next();
+}
+
+function mergePermissionRows(...groups: Array<Array<{ resourceId: string; permissions: Array<"view" | "edit"> }>>) {
+  const merged = new Map<string, Set<"view" | "edit">>();
+  for (const group of groups) {
+    for (const entry of group) {
+      const permissions = merged.get(entry.resourceId) ?? new Set<"view" | "edit">();
+      for (const permission of entry.permissions) {
+        permissions.add(permission);
+      }
+      merged.set(entry.resourceId, permissions);
+    }
+  }
+  return [...merged.entries()].map(([resourceId, permissions]) => ({
+    resourceId,
+    permissions: (["view", "edit"] as const).filter((permission) => permissions.has(permission))
+  }));
 }
 
 function normalizeZabbixUrl(input: string) {

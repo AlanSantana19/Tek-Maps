@@ -1,4 +1,4 @@
-import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CustomIcon, DeviceSnapshot, Topology, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
+import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
 
 const TOKEN_KEY = "tek-map-token";
 export const AUTH_EXPIRED_EVENT = "tek-map-auth-expired";
@@ -39,6 +39,22 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 export async function getAppVersion() {
   return apiGet<AppVersion>("/api/version");
+}
+
+export async function getCurrentUserPermissions() {
+  return apiGet<CurrentUserPermissions>("/api/me/permissions");
+}
+
+export async function getLoginLogoConfig() {
+  return apiGet<LoginLogoConfig>("/api/branding/login-logo");
+}
+
+export async function getNavLogoConfig() {
+  return apiGet<NavLogoConfig>("/api/branding/nav-logo");
+}
+
+export async function getFaviconConfig() {
+  return apiGet<FaviconConfig>("/api/branding/favicon");
 }
 
 export async function apiSend<T>(path: string, method: "POST" | "PUT" | "PATCH", body: unknown): Promise<T> {
@@ -150,6 +166,54 @@ export async function addGroupMember(groupId: string, userId: string) {
 
 export async function removeGroupMember(groupId: string, userId: string) {
   return apiDelete(`/api/admin/groups/${groupId}/members/${userId}`);
+}
+
+export async function getMapPermissionAdminState() {
+  return apiGet<MapPermissionAdminState>("/api/admin/map-permissions");
+}
+
+export async function updateUserMapPermissions(userId: string, permissions: Array<{ topologyId: string; permissions: PermissionKey[] }>) {
+  return apiSend<UserMapPermission[]>(`/api/admin/users/${userId}/map-permissions`, "PUT", { permissions });
+}
+
+export async function updateUserGranularPermissions(
+  userId: string,
+  payload: {
+    menuPermissions: Array<{ menuId: string; permissions: PermissionKey[] }>;
+    mapPermissions: Array<{ topologyId: string; permissions: PermissionKey[] }>;
+  }
+) {
+  return apiSend<{ menuPermissions: unknown[]; mapPermissions: UserMapPermission[] }>(
+    `/api/admin/users/${userId}/granular-permissions`,
+    "PUT",
+    payload
+  );
+}
+
+export async function updateGroupGranularPermissions(
+  groupId: string,
+  payload: {
+    menuPermissions: Array<{ menuId: string; permissions: PermissionKey[] }>;
+    mapPermissions: Array<{ topologyId: string; permissions: PermissionKey[] }>;
+  }
+) {
+  return apiSend<{ menuPermissions: unknown[]; mapPermissions: unknown[] }>(
+    `/api/admin/groups/${groupId}/granular-permissions`,
+    "PUT",
+    payload
+  );
+}
+
+export async function updateLoginLogoConfig(config: LoginLogoConfig) {
+  return apiSend<LoginLogoConfig>("/api/admin/branding/login-logo", "PUT", config);
+}
+
+export async function updateNavLogoConfig(config: NavLogoConfig) {
+  return apiSend<NavLogoConfig>("/api/admin/branding/nav-logo", "PUT", config);
+}
+
+export async function updateFaviconConfig(config: FaviconConfig) {
+  return apiSend<FaviconConfig>("/api/admin/branding/favicon", "PUT", config);
 }
 
 export async function listCustomIcons() {

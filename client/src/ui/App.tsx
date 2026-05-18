@@ -18,6 +18,7 @@ import {
   Minimize2,
   MousePointer2,
   Network,
+  Palette,
   Pencil,
   Plus,
   Radio,
@@ -32,7 +33,7 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Connection, Edge, Node, OnEdgesChange, OnNodesChange, ReactFlowInstance } from "@xyflow/react";
 import type { DragEvent, FormEvent, MouseEvent } from "react";
 import { Background, BackgroundVariant, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
@@ -45,6 +46,11 @@ import {
   createAccessUser,
   createCustomIcon,
   getAppVersion,
+  getCurrentUserPermissions,
+  getLoginLogoConfig,
+  getFaviconConfig,
+  getNavLogoConfig,
+  getMapPermissionAdminState,
   getToken,
   getZabbixServerHosts,
   inspectZabbixItems,
@@ -66,15 +72,20 @@ import {
   testZabbixConfig,
   updateAccessGroup,
   updateAccessUser,
+  updateGroupGranularPermissions,
+  updateLoginLogoConfig,
+  updateFaviconConfig,
+  updateNavLogoConfig,
+  updateUserGranularPermissions,
   updateZabbixConfig
 } from "../api";
-import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CustomIcon, DeviceSnapshot, PortMetric, Topology, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
+import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
 import { DeviceNode } from "./DeviceNode";
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { link: LinkEdge };
 
-type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons";
+type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding";
 
 type DeviceNodeData = {
   label: string;
@@ -190,8 +201,25 @@ const menuItems: Array<{ id: SectionId; label: string; icon: typeof BarChart3 }>
   { id: "viewer", label: "Live Viewer", icon: Eye },
   { id: "server", label: "Servidor", icon: Server },
   { id: "icons", label: "Icones", icon: Image },
+  { id: "branding", label: "Personalizacao", icon: Palette },
   { id: "admin", label: "Admin", icon: Users }
 ];
+
+function applyFavicon(dataUrl: string) {
+  document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]').forEach((el) => el.remove());
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.href = dataUrl;
+  document.head.appendChild(link);
+}
+
+const DEFAULT_LOGIN_LOGO_CONFIG: LoginLogoConfig = {
+  width: 96,
+  offsetX: 0,
+  offsetY: 0,
+  backgroundColor: "#0c0f14",
+  titleColor: "#e7eef2"
+};
 
 export function App() {
   const [token, setLocalToken] = useState(getToken());
@@ -213,10 +241,36 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
   const [customIcons, setCustomIcons] = useState<CustomIcon[]>([]);
+  const [currentPermissions, setCurrentPermissions] = useState<CurrentUserPermissions | null>(null);
+  const [loginLogoConfig, setLoginLogoConfig] = useState<LoginLogoConfig>(DEFAULT_LOGIN_LOGO_CONFIG);
+  const [navLogoConfig, setNavLogoConfig] = useState<NavLogoConfig>({ width: 120 });
+  const [faviconConfig, setFaviconConfig] = useState<FaviconConfig>({});
 
   const snapshotsByHost = useMemo(() => new Map(hosts.map((host) => [host.hostId, host])), [hosts]);
   const alertsCount = hosts.reduce((total, host) => total + host.alerts.length, 0);
   const downHosts = hosts.filter((host) => host.status === "down").length;
+  const visibleMenuIds = useMemo(() => {
+    if (!currentPermissions || currentPermissions.fullAccess) {
+      return new Set<SectionId>(menuItems.map((item) => item.id));
+    }
+    return new Set<SectionId>(
+      currentPermissions.menuPermissions
+        .filter((entry) => entry.permissions.includes("view"))
+        .map((entry) => entry.menuId as SectionId)
+    );
+  }, [currentPermissions]);
+  const availableMenuItems = menuItems.filter((item) => visibleMenuIds.has(item.id));
+  const canCustomizeBranding = currentPermissions?.user.role === "admin";
+  const allowedTopologyIds = useMemo(() => {
+    if (!currentPermissions || currentPermissions.fullAccess) {
+      return null;
+    }
+    return new Set(currentPermissions.mapPermissions.filter((entry) => entry.permissions.includes("view")).map((entry) => entry.topologyId));
+  }, [currentPermissions]);
+
+  const applyVisibleTopologies = useCallback((items: Array<Topology & { id: string }>) => {
+    setTopologies(allowedTopologyIds ? items.filter((topology) => allowedTopologyIds.has(topology.id)) : items);
+  }, [allowedTopologyIds]);
 
   useEffect(() => {
     function handleAuthExpired() {
@@ -224,6 +278,7 @@ export function App() {
       setHosts([]);
       setNodes([]);
       setEdges([]);
+      setCurrentPermissions(null);
       setError("Sessao expirada. Faca login novamente.");
       setActiveSection("dashboard");
       setEditorMode("maps");
@@ -232,6 +287,12 @@ export function App() {
     window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   }, [setNodes, setEdges]);
+
+  useEffect(() => {
+    void getLoginLogoConfig().then(setLoginLogoConfig).catch(() => {});
+    void getNavLogoConfig().then(setNavLogoConfig).catch(() => {});
+    void getFaviconConfig().then((cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl); }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -257,16 +318,28 @@ export function App() {
 
   async function loadInitialData() {
     try {
-      const [hostData, topologies] = await Promise.all([
+      const [hostData, topologies, permissions] = await Promise.all([
         apiGet<DeviceSnapshot[]>("/api/zabbix/hosts"),
-        apiGet<Array<Topology & { id: string }>>("/api/topologies")
+        apiGet<Array<Topology & { id: string }>>("/api/topologies"),
+        getCurrentUserPermissions()
       ]);
       setHosts(hostData);
-      setTopologies(topologies);
-      const topology = topologies[0] ?? selectedTopology;
+      setCurrentPermissions(permissions);
+      const permittedTopologyIds = permissions.fullAccess
+        ? null
+        : new Set(permissions.mapPermissions.filter((entry) => entry.permissions.includes("view")).map((entry) => entry.topologyId));
+      const visibleTopologies = permittedTopologyIds
+        ? topologies.filter((topology) => permittedTopologyIds.has(topology.id))
+        : topologies;
+      setTopologies(visibleTopologies);
+      const topology = visibleTopologies[0] ?? selectedTopology;
       setSelectedTopology(topology);
       setNodes(topology.nodes.map(toFlowNode(hostData, customIcons)));
       setEdges(topology.edges.map(toFlowEdge));
+      if (!permissions.fullAccess && !permissions.menuPermissions.some((entry) => entry.menuId === activeSection && entry.permissions.includes("view"))) {
+        const firstMenu = menuItems.find((item) => permissions.menuPermissions.some((entry) => entry.menuId === item.id && entry.permissions.includes("view")));
+        setActiveSection(firstMenu?.id ?? "dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar dados");
     }
@@ -289,6 +362,7 @@ export function App() {
     setHosts([]);
     setNodes([]);
     setEdges([]);
+    setCurrentPermissions(null);
     setActiveSection("dashboard");
     setEditorMode("maps");
   }
@@ -568,9 +642,9 @@ export function App() {
   if (!token) {
     return (
       <main className="login-screen">
-        <form className="login-panel" onSubmit={handleLogin}>
-          <Lock size={28} />
-          <h1>Tek Map</h1>
+        <form className="login-panel" onSubmit={handleLogin} style={{ background: loginLogoConfig.backgroundColor }}>
+          <LoginLogoPreview config={loginLogoConfig} />
+          <h1 style={{ color: loginLogoConfig.titleColor }}>Tek Map</h1>
           <input
             type="text"
             placeholder="Usuario ou email"
@@ -596,16 +670,26 @@ export function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <Activity size={24} />
-          <div>
-            <strong>Tek Map</strong>
-            <span>{hosts.length} hosts sincronizados</span>
-            <small>{appVersion ? `v${appVersion.version} · ${appVersion.build}` : ""}</small>
-          </div>
+          {navLogoConfig.dataUrl ? (
+            <div className="brand-with-logo">
+              <img src={navLogoConfig.dataUrl} alt="Logo" className="nav-logo-img" style={{ width: navLogoConfig.width }} />
+              <span>{hosts.length} hosts sincronizados</span>
+              <small>{appVersion ? `v${appVersion.version} · ${appVersion.build}` : ""}</small>
+            </div>
+          ) : (
+            <>
+              <Activity size={24} />
+              <div>
+                <strong>Tek Map</strong>
+                <span>{hosts.length} hosts sincronizados</span>
+                <small>{appVersion ? `v${appVersion.version} · ${appVersion.build}` : ""}</small>
+              </div>
+            </>
+          )}
         </div>
 
         <nav className="side-nav" aria-label="Principal">
-          {menuItems.map((item) => {
+          {availableMenuItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -653,7 +737,7 @@ export function App() {
         {activeSection === "editor" && editorMode === "maps" ? (
           <EditorMaps
             topologies={topologies}
-            onTopologiesChange={setTopologies}
+            onTopologiesChange={applyVisibleTopologies}
             onOpenTopology={openTopology}
           />
         ) : null}
@@ -699,9 +783,346 @@ export function App() {
         ) : null}
         {activeSection === "server" ? <ServerSettings /> : null}
         {activeSection === "icons" ? <CustomIconsPanel customIcons={customIcons} onCustomIconsChange={setCustomIcons} /> : null}
+        {activeSection === "branding" && canCustomizeBranding ? (
+          <BrandingPanel
+            loginConfig={loginLogoConfig}
+            navConfig={navLogoConfig}
+            faviconConfig={faviconConfig}
+            onLoginConfigChange={setLoginLogoConfig}
+            onNavConfigChange={setNavLogoConfig}
+            onFaviconConfigChange={(cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl); }}
+          />
+        ) : null}
         {activeSection === "admin" ? <AdminUsers /> : null}
       </section>
     </main>
+  );
+}
+
+function LoginLogoPreview({ config, compact = false }: { config: LoginLogoConfig; compact?: boolean }) {
+  return (
+    <div className={compact ? "login-logo-slot compact" : "login-logo-slot"} style={{ transform: `translate(${config.offsetX}px, ${config.offsetY}px)` }}>
+      {config.dataUrl ? (
+        <img src={config.dataUrl} alt="Logo" style={{ width: config.width }} />
+      ) : (
+        <Lock size={compact ? 28 : 44} />
+      )}
+    </div>
+  );
+}
+
+function BrandingPanel({
+  loginConfig,
+  navConfig,
+  faviconConfig,
+  onLoginConfigChange,
+  onNavConfigChange,
+  onFaviconConfigChange
+}: {
+  loginConfig: LoginLogoConfig;
+  navConfig: NavLogoConfig;
+  faviconConfig: FaviconConfig;
+  onLoginConfigChange: (config: LoginLogoConfig) => void;
+  onNavConfigChange: (config: NavLogoConfig) => void;
+  onFaviconConfigChange: (config: FaviconConfig) => void;
+}) {
+  const [loginDraft, setLoginDraft] = useState<LoginLogoConfig>(loginConfig);
+  const [navDraft, setNavDraft] = useState<NavLogoConfig>(navConfig);
+  const [faviconDraft, setFaviconDraft] = useState<FaviconConfig>(faviconConfig);
+  const [loginStatus, setLoginStatus] = useState<string | null>(null);
+  const [navStatus, setNavStatus] = useState<string | null>(null);
+  const [faviconStatus, setFaviconStatus] = useState<string | null>(null);
+  const [savingLogin, setSavingLogin] = useState(false);
+  const [savingNav, setSavingNav] = useState(false);
+  const [savingFavicon, setSavingFavicon] = useState(false);
+
+  useEffect(() => setLoginDraft(loginConfig), [loginConfig]);
+  useEffect(() => setNavDraft(navConfig), [navConfig]);
+  useEffect(() => setFaviconDraft(faviconConfig), [faviconConfig]);
+
+  async function handleLoginFile(file: File | undefined) {
+    setLoginStatus(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setLoginStatus("Selecione um arquivo de imagem."); return; }
+    if (file.size > 1_500_000) { setLoginStatus("A imagem precisa ter ate 1,5 MB."); return; }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setLoginDraft((c) => ({ ...c, dataUrl }));
+    } catch { setLoginStatus("Nao foi possivel ler a imagem."); }
+  }
+
+  async function handleNavFile(file: File | undefined) {
+    setNavStatus(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setNavStatus("Selecione um arquivo de imagem."); return; }
+    if (file.size > 1_500_000) { setNavStatus("A imagem precisa ter ate 1,5 MB."); return; }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setNavDraft((c) => ({ ...c, dataUrl }));
+    } catch { setNavStatus("Nao foi possivel ler a imagem."); }
+  }
+
+  async function saveLogin() {
+    setSavingLogin(true);
+    setLoginStatus(null);
+    try {
+      const saved = await updateLoginLogoConfig(loginDraft);
+      onLoginConfigChange(saved);
+      setLoginStatus("Salvo.");
+    } catch (err) {
+      setLoginStatus(err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally { setSavingLogin(false); }
+  }
+
+  async function saveNav() {
+    setSavingNav(true);
+    setNavStatus(null);
+    try {
+      const saved = await updateNavLogoConfig(navDraft);
+      onNavConfigChange(saved);
+      setNavStatus("Salvo.");
+    } catch (err) {
+      setNavStatus(err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally { setSavingNav(false); }
+  }
+
+  async function handleFaviconFile(file: File | undefined) {
+    setFaviconStatus(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setFaviconStatus("Selecione um arquivo de imagem."); return; }
+    if (file.size > 500_000) { setFaviconStatus("A imagem precisa ter ate 500 KB."); return; }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setFaviconDraft({ dataUrl });
+    } catch { setFaviconStatus("Nao foi possivel ler a imagem."); }
+  }
+
+  async function saveFavicon() {
+    setSavingFavicon(true);
+    setFaviconStatus(null);
+    try {
+      const saved = await updateFaviconConfig(faviconDraft);
+      onFaviconConfigChange(saved);
+      setFaviconStatus("Salvo.");
+    } catch (err) {
+      setFaviconStatus(err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally { setSavingFavicon(false); }
+  }
+
+  return (
+    <section className="page">
+      <PageHeader title="Personalizacao" subtitle="Customize logos e cores da interface." />
+
+      <div className="branding-sections">
+
+        <div className="branding-block">
+          <div className="branding-block-header">
+            <Lock size={16} />
+            <div>
+              <strong>Logo da tela de login</strong>
+              <span>Imagem exibida no painel de autenticacao</span>
+            </div>
+          </div>
+          <div className="branding-layout">
+            <section className="panel branding-form">
+              <div className="branding-upload-zone" onClick={() => (document.getElementById("login-logo-input") as HTMLInputElement)?.click()}>
+                {loginDraft.dataUrl ? (
+                  <img src={loginDraft.dataUrl} alt="Preview" className="branding-upload-thumb" />
+                ) : (
+                  <div className="branding-upload-placeholder">
+                    <Image size={28} />
+                    <span>Clique para selecionar</span>
+                    <small>PNG, JPG, SVG ou WebP · max 1,5 MB</small>
+                  </div>
+                )}
+                <input
+                  id="login-logo-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  style={{ display: "none" }}
+                  onChange={(event) => void handleLoginFile(event.target.files?.[0])}
+                />
+              </div>
+              <label>
+                Tamanho
+                <div className="range-row">
+                  <input type="range" min={48} max={240} value={loginDraft.width} onChange={(event) => setLoginDraft({ ...loginDraft, width: Number(event.target.value) })} />
+                  <span className="range-value">{loginDraft.width}px</span>
+                </div>
+              </label>
+              <div className="two-col-fields">
+                <label>
+                  Posicao X
+                  <input type="number" min={-120} max={120} value={loginDraft.offsetX} onChange={(event) => setLoginDraft({ ...loginDraft, offsetX: Number(event.target.value) })} />
+                </label>
+                <label>
+                  Posicao Y
+                  <input type="number" min={-80} max={80} value={loginDraft.offsetY} onChange={(event) => setLoginDraft({ ...loginDraft, offsetY: Number(event.target.value) })} />
+                </label>
+              </div>
+              <div className="two-col-fields">
+                <label>
+                  <span className="color-label-text">Fundo</span>
+                  <div className="color-input-wrap">
+                    <input type="color" value={loginDraft.backgroundColor} onChange={(event) => setLoginDraft({ ...loginDraft, backgroundColor: event.target.value })} />
+                    <span className="color-hex">{loginDraft.backgroundColor}</span>
+                  </div>
+                </label>
+                <label>
+                  <span className="color-label-text">Titulo</span>
+                  <div className="color-input-wrap">
+                    <input type="color" value={loginDraft.titleColor} onChange={(event) => setLoginDraft({ ...loginDraft, titleColor: event.target.value })} />
+                    <span className="color-hex">{loginDraft.titleColor}</span>
+                  </div>
+                </label>
+              </div>
+              <div className="action-row">
+                <button className="secondary-button" type="button" onClick={() => setLoginDraft(DEFAULT_LOGIN_LOGO_CONFIG)}>
+                  Restaurar padrao
+                </button>
+                <button className="save-button" type="button" onClick={() => void saveLogin()} disabled={savingLogin}>
+                  <Save size={18} />
+                  {savingLogin ? "Salvando" : "Salvar"}
+                </button>
+              </div>
+              {loginStatus ? <p className="form-status">{loginStatus}</p> : null}
+            </section>
+            <section className="branding-preview-wrap">
+              <p className="preview-label">Preview</p>
+              <div className="login-preview-screen">
+                <div className="login-panel preview" style={{ background: loginDraft.backgroundColor }}>
+                  <LoginLogoPreview config={loginDraft} />
+                  <h1 style={{ color: loginDraft.titleColor }}>Tek Map</h1>
+                  <input disabled placeholder="Usuario ou email" />
+                  <input disabled placeholder="Senha" />
+                  <button type="button">Entrar</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div className="branding-block">
+          <div className="branding-block-header">
+            <Palette size={16} />
+            <div>
+              <strong>Logo da sidebar</strong>
+              <span>Substitui o icone e o nome no canto superior esquerdo</span>
+            </div>
+          </div>
+          <div className="branding-layout branding-layout--nav">
+            <section className="panel branding-form">
+              <div className="branding-upload-zone" onClick={() => (document.getElementById("nav-logo-input") as HTMLInputElement)?.click()}>
+                {navDraft.dataUrl ? (
+                  <img src={navDraft.dataUrl} alt="Preview" className="branding-upload-thumb" />
+                ) : (
+                  <div className="branding-upload-placeholder">
+                    <Image size={28} />
+                    <span>Clique para selecionar</span>
+                    <small>PNG, JPG, SVG ou WebP · max 1,5 MB</small>
+                  </div>
+                )}
+                <input
+                  id="nav-logo-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  style={{ display: "none" }}
+                  onChange={(event) => void handleNavFile(event.target.files?.[0])}
+                />
+              </div>
+              <label>
+                Tamanho
+                <div className="range-row">
+                  <input type="range" min={40} max={200} value={navDraft.width} onChange={(event) => setNavDraft({ ...navDraft, width: Number(event.target.value) })} />
+                  <span className="range-value">{navDraft.width}px</span>
+                </div>
+              </label>
+              <div className="action-row">
+                <button className="secondary-button" type="button" onClick={() => setNavDraft({ width: 120 })}>
+                  Restaurar padrao
+                </button>
+                <button className="save-button" type="button" onClick={() => void saveNav()} disabled={savingNav}>
+                  <Save size={18} />
+                  {savingNav ? "Salvando" : "Salvar"}
+                </button>
+              </div>
+              {navStatus ? <p className="form-status">{navStatus}</p> : null}
+            </section>
+            <section className="branding-preview-wrap">
+              <p className="preview-label">Preview</p>
+              <div className="nav-logo-preview">
+                <div className="nav-logo-preview-sidebar">
+                  {navDraft.dataUrl ? (
+                    <img src={navDraft.dataUrl} alt="Logo" className="nav-logo-img" style={{ width: navDraft.width }} />
+                  ) : (
+                    <div className="nav-logo-preview-default">
+                      <Activity size={20} />
+                      <span>Tek Map</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div className="branding-block">
+          <div className="branding-block-header">
+            <Image size={16} />
+            <div>
+              <strong>Favicon da aba</strong>
+              <span>Icone exibido na aba do navegador</span>
+            </div>
+          </div>
+          <div className="branding-layout branding-layout--nav">
+            <section className="panel branding-form">
+              <div className="branding-upload-zone" onClick={() => (document.getElementById("favicon-input") as HTMLInputElement)?.click()}>
+                {faviconDraft.dataUrl ? (
+                  <img src={faviconDraft.dataUrl} alt="Favicon" className="branding-upload-thumb favicon-thumb" />
+                ) : (
+                  <div className="branding-upload-placeholder">
+                    <Image size={28} />
+                    <span>Clique para selecionar</span>
+                    <small>PNG, SVG ou ICO · max 500 KB · recomendado 32×32</small>
+                  </div>
+                )}
+                <input
+                  id="favicon-input"
+                  type="file"
+                  accept="image/png,image/svg+xml,image/x-icon,image/webp"
+                  style={{ display: "none" }}
+                  onChange={(event) => void handleFaviconFile(event.target.files?.[0])}
+                />
+              </div>
+              <div className="action-row">
+                <button className="secondary-button" type="button" onClick={() => setFaviconDraft({})}>
+                  Restaurar padrao
+                </button>
+                <button className="save-button" type="button" onClick={() => void saveFavicon()} disabled={savingFavicon}>
+                  <Save size={18} />
+                  {savingFavicon ? "Salvando" : "Salvar"}
+                </button>
+              </div>
+              {faviconStatus ? <p className="form-status">{faviconStatus}</p> : null}
+            </section>
+            <section className="branding-preview-wrap">
+              <p className="preview-label">Preview</p>
+              <div className="favicon-preview">
+                <div className="favicon-preview-tab">
+                  {faviconDraft.dataUrl ? (
+                    <img src={faviconDraft.dataUrl} alt="Favicon" width={16} height={16} />
+                  ) : (
+                    <Palette size={14} />
+                  )}
+                  <span>Tek Map</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+      </div>
+    </section>
   );
 }
 
@@ -2207,7 +2628,11 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
       try {
         const updated = await apiGet<Topology & { id: string }>(`/api/topologies/${selected.id}`);
         setSelected(updated);
-      } catch { /* keep showing current */ }
+      } catch {
+        setSelected(null);
+        setViewNodes([]);
+        setViewEdges([]);
+      }
       setCountdown(VIEWER_REFRESH_INTERVAL);
     }, VIEWER_REFRESH_INTERVAL * 1000);
 
@@ -2633,12 +3058,12 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 function AdminUsers() {
-  const [adminTab, setAdminTab] = useState<"users" | "groups">("users");
+  const [adminTab, setAdminTab] = useState<"users" | "groups" | "permissions">("users");
 
   return (
     <section className="page">
       <PageHeader title="Admin" subtitle="Crie usuarios e defina o nivel de acesso ao Tek Map." />
-      <div className="element-tabs" role="tablist" style={{ marginBottom: 18, maxWidth: 320 }}>
+      <div className="element-tabs" role="tablist" style={{ marginBottom: 18, maxWidth: 480, gridTemplateColumns: "repeat(3, 1fr)" }}>
         <button
           role="tab"
           className={adminTab === "users" ? "active" : ""}
@@ -2653,8 +3078,17 @@ function AdminUsers() {
         >
           Grupos
         </button>
+        <button
+          role="tab"
+          className={adminTab === "permissions" ? "active" : ""}
+          onClick={() => setAdminTab("permissions")}
+        >
+          Permissoes
+        </button>
       </div>
-      {adminTab === "users" ? <AdminUsersTab /> : <AdminGroupsTab />}
+      {adminTab === "users" ? <AdminUsersTab /> : null}
+      {adminTab === "groups" ? <AdminGroupsTab /> : null}
+      {adminTab === "permissions" ? <AdminMapPermissionsTab /> : null}
     </section>
   );
 }
@@ -2833,6 +3267,408 @@ function AdminUsersTab() {
           {users.length === 0 ? <p className="empty-state">Nenhum usuario criado ainda.</p> : null}
         </div>
       </section>
+    </div>
+  );
+}
+
+const permissionLabels: Record<PermissionKey, string> = {
+  view: "Visualizar",
+  edit: "Editar"
+};
+
+const permissionOrder: PermissionKey[] = ["view", "edit"];
+
+const permissionMenus: Array<{ id: SectionId; label: string }> = menuItems.map((item) => ({
+  id: item.id,
+  label: item.label
+}));
+
+function AdminMapPermissionsTab() {
+  const [state, setState] = useState<MapPermissionAdminState | null>(null);
+  const [subjectType, setSubjectType] = useState<"users" | "groups">("users");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [draftMaps, setDraftMaps] = useState<UserMapPermission[]>([]);
+  const [draftMenus, setDraftMenus] = useState<UserMenuPermission[]>([]);
+  const [draftGroupMaps, setDraftGroupMaps] = useState<GroupMapPermission[]>([]);
+  const [draftGroupMenus, setDraftGroupMenus] = useState<GroupMenuPermission[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [savingPermissions, setSavingPermissions] = useState(false);
+
+  useEffect(() => {
+    void getMapPermissionAdminState()
+      .then((data) => {
+        setState(data);
+        const firstUserId = data.users[0]?.id ?? "";
+        const firstGroupId = data.groups[0]?.id ?? "";
+        setSelectedUserId(firstUserId);
+        setSelectedGroupId(firstGroupId);
+        setDraftMaps(data.mapPermissions ?? data.permissions);
+        setDraftMenus(data.menuPermissions);
+        setDraftGroupMaps(data.groupMapPermissions);
+        setDraftGroupMenus(data.groupMenuPermissions);
+      })
+      .catch((err) => setStatus(err instanceof Error ? err.message : "Nao foi possivel carregar permissoes."));
+  }, []);
+
+  const selectedUser = state?.users.find((user) => user.id === selectedUserId);
+  const selectedGroup = state?.groups.find((group) => group.id === selectedGroupId);
+  const selectedSubjectId = subjectType === "users" ? selectedUserId : selectedGroupId;
+  const selectedSubjectLabel = subjectType === "users" ? selectedUser?.name : selectedGroup?.name;
+  const selectedMapPermissions = useMemo(() => {
+    const map = new Map<string, PermissionKey[]>();
+    if (subjectType === "users") {
+      for (const entry of draftMaps.filter((item) => item.userId === selectedUserId)) map.set(entry.topologyId, entry.permissions);
+    } else {
+      for (const entry of draftGroupMaps.filter((item) => item.groupId === selectedGroupId)) map.set(entry.topologyId, entry.permissions);
+    }
+    return map;
+  }, [draftMaps, draftGroupMaps, selectedGroupId, selectedUserId, subjectType]);
+  const selectedMenuPermissions = useMemo(() => {
+    const map = new Map<string, PermissionKey[]>();
+    if (subjectType === "users") {
+      for (const entry of draftMenus.filter((item) => item.userId === selectedUserId)) map.set(entry.menuId, entry.permissions);
+    } else {
+      for (const entry of draftGroupMenus.filter((item) => item.groupId === selectedGroupId)) map.set(entry.menuId, entry.permissions);
+    }
+    return map;
+  }, [draftGroupMenus, draftMenus, selectedGroupId, selectedUserId, subjectType]);
+  const selectedMapCount = [...selectedMapPermissions.values()].filter((permissions) => permissions.length > 0).length;
+  const selectedMenuCount = [...selectedMenuPermissions.values()].filter((permissions) => permissions.length > 0).length;
+  const totalMaps = state?.topologies.length ?? 0;
+  const changedUserIds = state ? changedPermissionUserIds(
+    draftMaps,
+    state.mapPermissions ?? state.permissions,
+    draftMenus,
+    state.menuPermissions
+  ) : [];
+  const changedGroupIds = state ? changedGroupPermissionIds(draftGroupMaps, state.groupMapPermissions, draftGroupMenus, state.groupMenuPermissions) : [];
+  const hasChanges = changedUserIds.length > 0 || changedGroupIds.length > 0;
+
+  function toggleMapPermission(topologyId: string, permission: PermissionKey, checked: boolean) {
+    if (subjectType === "users") {
+      setDraftMaps((current) => updatePermissionRows(current, selectedUserId, "topologyId", topologyId, permission, checked));
+    } else {
+      setDraftGroupMaps((current) => updatePermissionRows(current, selectedGroupId, "topologyId", topologyId, permission, checked, "groupId"));
+    }
+  }
+
+  function toggleMenuPermission(menuId: string, permission: PermissionKey, checked: boolean) {
+    if (subjectType === "users") {
+      setDraftMenus((current) => updatePermissionRows(current, selectedUserId, "menuId", menuId, permission, checked));
+    } else {
+      setDraftGroupMenus((current) => updatePermissionRows(current, selectedGroupId, "menuId", menuId, permission, checked, "groupId"));
+    }
+  }
+
+  async function savePermissions(scope: "selected" | "all") {
+    const usersToSave = subjectType === "users" ? (scope === "selected" ? [selectedUserId].filter(Boolean) : changedUserIds) : [];
+    const groupsToSave = subjectType === "groups" ? (scope === "selected" ? [selectedGroupId].filter(Boolean) : changedGroupIds) : [];
+    if (usersToSave.length === 0 && groupsToSave.length === 0) return;
+    setSavingPermissions(true);
+    setStatus(null);
+    try {
+      await Promise.all(usersToSave.map((userId) => updateUserGranularPermissions(userId, {
+        menuPermissions: draftMenus
+          .filter((entry) => entry.userId === userId)
+          .map((entry) => ({ menuId: entry.menuId, permissions: entry.permissions })),
+        mapPermissions: draftMaps
+          .filter((entry) => entry.userId === userId)
+          .map((entry) => ({ topologyId: entry.topologyId, permissions: entry.permissions }))
+      })));
+      await Promise.all(groupsToSave.map((groupId) => updateGroupGranularPermissions(groupId, {
+        menuPermissions: draftGroupMenus
+          .filter((entry) => entry.groupId === groupId)
+          .map((entry) => ({ menuId: entry.menuId, permissions: entry.permissions })),
+        mapPermissions: draftGroupMaps
+          .filter((entry) => entry.groupId === groupId)
+          .map((entry) => ({ topologyId: entry.topologyId, permissions: entry.permissions }))
+      })));
+      const refreshed = await getMapPermissionAdminState();
+      setState(refreshed);
+      setDraftMaps(refreshed.mapPermissions ?? refreshed.permissions);
+      setDraftMenus(refreshed.menuPermissions);
+      setDraftGroupMaps(refreshed.groupMapPermissions);
+      setDraftGroupMenus(refreshed.groupMenuPermissions);
+      setStatus(scope === "all" ? "Permissoes de todos os usuarios salvas." : "Permissoes salvas.");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao salvar permissoes.");
+    } finally {
+      setSavingPermissions(false);
+    }
+  }
+
+  if (!state) {
+    return <section className="panel"><p className="empty-state">Carregando permissoes...</p></section>;
+  }
+
+  return (
+    <div className="permission-layout">
+      <section className="panel permission-users-panel">
+        <h2>{subjectType === "users" ? "Usuarios" : "Grupos"}</h2>
+        <div className="element-tabs" role="tablist" style={{ marginBottom: 12 }}>
+          <button className={subjectType === "users" ? "active" : ""} type="button" onClick={() => setSubjectType("users")}>Usuarios</button>
+          <button className={subjectType === "groups" ? "active" : ""} type="button" onClick={() => setSubjectType("groups")}>Grupos</button>
+        </div>
+        <div className="permission-user-list">
+          {subjectType === "users" ? state.users.map((user) => {
+            const mapCount = draftMaps.filter((entry) => entry.userId === user.id && entry.permissions.length > 0).length;
+            const menuCount = draftMenus.filter((entry) => entry.userId === user.id && entry.permissions.length > 0).length;
+            const changed = changedUserIds.includes(user.id);
+            return (
+              <button
+                key={user.id}
+                className={`permission-user-button ${selectedUserId === user.id ? "active" : ""}`}
+                type="button"
+                onClick={() => setSelectedUserId(user.id)}
+              >
+                <span>
+                  <strong>{user.name}</strong>
+                  <small>{user.email}</small>
+                </span>
+                <em>{changed ? "Alterado" : `${menuCount}/${permissionMenus.length} menus · ${mapCount}/${totalMaps} mapas`}</em>
+              </button>
+            );
+          }) : state.groups.map((group) => {
+            const mapCount = draftGroupMaps.filter((entry) => entry.groupId === group.id && entry.permissions.length > 0).length;
+            const menuCount = draftGroupMenus.filter((entry) => entry.groupId === group.id && entry.permissions.length > 0).length;
+            const changed = changedGroupIds.includes(group.id);
+            return (
+              <button
+                key={group.id}
+                className={`permission-user-button ${selectedGroupId === group.id ? "active" : ""}`}
+                type="button"
+                onClick={() => setSelectedGroupId(group.id)}
+              >
+                <span>
+                  <strong>{group.name}</strong>
+                  <small>{group.memberCount} membro(s)</small>
+                </span>
+                <em>{changed ? "Alterado" : `${menuCount}/${permissionMenus.length} menus · ${mapCount}/${totalMaps} mapas`}</em>
+              </button>
+            );
+          })}
+          {subjectType === "users" && state.users.length === 0 ? <p className="empty-state">Nenhum usuario criado ainda.</p> : null}
+          {subjectType === "groups" && state.groups.length === 0 ? <p className="empty-state">Nenhum grupo criado ainda.</p> : null}
+        </div>
+      </section>
+
+      <section className="panel permission-editor-panel">
+        <div className="permission-editor-header">
+          <div>
+            <h2>{selectedSubjectLabel ? `Permissoes de ${selectedSubjectLabel}` : "Permissoes granulares"}</h2>
+            <p>{selectedMenuCount} menu(s) e {selectedMapCount} de {totalMaps} mapa(s) com acesso configurado.</p>
+          </div>
+          <div className="permission-summary">
+            <span className="role-pill">{subjectType === "users" ? (selectedUser?.role ?? "sem usuario") : (selectedGroup?.role ?? "sem grupo")}</span>
+            {subjectType === "users" ? <span className={`state-pill ${selectedUser?.active ? "active" : ""}`}>{selectedUser?.active ? "Ativo" : "Inativo"}</span> : null}
+          </div>
+        </div>
+
+        <h3 className="permission-section-title">Menus</h3>
+        <div className="permission-table" role="table" aria-label="Permissoes por menu">
+          <div className="permission-table-row permission-table-head" role="row">
+            <span>Menu</span>
+            {permissionOrder.map((permission) => <span key={permission}>{permissionLabels[permission]}</span>)}
+            <span>Estado</span>
+          </div>
+          {permissionMenus.map((menu) => {
+            const permissions = selectedMenuPermissions.get(menu.id) ?? [];
+            return (
+              <div className="permission-table-row" role="row" key={menu.id}>
+                <div className="permission-map-cell">
+                  <strong>{menu.label}</strong>
+                  <small>Menu principal</small>
+                </div>
+                {permissionOrder.map((permission) => (
+                  <label className="permission-check" key={permission}>
+                    <input
+                      type="checkbox"
+                      checked={permissions.includes(permission)}
+                      onChange={(event) => toggleMenuPermission(menu.id, permission, event.target.checked)}
+                      disabled={!selectedSubjectId}
+                    />
+                    <span>{permissionLabels[permission]}</span>
+                  </label>
+                ))}
+                <PermissionState permissions={permissions} />
+              </div>
+            );
+          })}
+        </div>
+
+        <h3 className="permission-section-title">Mapas</h3>
+        <div className="permission-table" role="table" aria-label="Permissoes por mapa">
+          <div className="permission-table-row permission-table-head" role="row">
+            <span>Mapa</span>
+            {permissionOrder.map((permission) => <span key={permission}>{permissionLabels[permission]}</span>)}
+            <span>Estado</span>
+          </div>
+          {state.topologies.map((topology) => {
+            const permissions = selectedMapPermissions.get(topology.id) ?? [];
+            return (
+              <div className="permission-table-row" role="row" key={topology.id}>
+                <div className="permission-map-cell">
+                  <strong>{topology.name}</strong>
+                  <small>{topology.nodes.length} dispositivos - {topology.edges.length} links</small>
+                </div>
+                {permissionOrder.map((permission) => (
+                  <label className="permission-check" key={permission}>
+                    <input
+                      type="checkbox"
+                      checked={permissions.includes(permission)}
+                      onChange={(event) => toggleMapPermission(topology.id, permission, event.target.checked)}
+                      disabled={!selectedSubjectId}
+                    />
+                    <span>{permissionLabels[permission]}</span>
+                  </label>
+                ))}
+                <PermissionState permissions={permissions} />
+              </div>
+            );
+          })}
+          {state.topologies.length === 0 ? <p className="empty-state">Nenhum mapa criado ainda.</p> : null}
+        </div>
+
+        <div className="permission-save-row">
+          {status ? <p className="form-status">{status}</p> : null}
+          <button className="secondary-button" type="button" onClick={() => void savePermissions("selected")} disabled={!selectedSubjectId || savingPermissions || !hasChanges}>
+            Salvar atual
+          </button>
+          <button className="save-button" type="button" onClick={() => void savePermissions("all")} disabled={savingPermissions || !hasChanges}>
+            <Save size={18} />
+            {savingPermissions ? "Salvando" : `Salvar alteracoes (${subjectType === "users" ? changedUserIds.length : changedGroupIds.length})`}
+          </button>
+        </div>
+      </section>
+
+      <section className="panel permission-audit-panel">
+        <h2>Historico recente</h2>
+        <div className="permission-audit-list">
+          {[...state.menuAudit.map((entry) => ({ ...entry, kind: "Menu" as const })), ...state.audit.map((entry) => ({ ...entry, kind: "Mapa" as const }))]
+            .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+            .slice(0, 30)
+            .map((entry) => {
+            const user = state.users.find((item) => item.id === entry.userId);
+            const resourceName = entry.kind === "Menu"
+              ? permissionMenus.find((item) => item.id === entry.menuId)?.label
+              : state.topologies.find((item) => item.id === entry.topologyId)?.name;
+            return (
+              <div className="permission-audit-row" key={`${entry.kind}-${entry.id}`}>
+                <strong>{user?.name ?? "Usuario removido"}</strong>
+                <span>{entry.kind}: {resourceName ?? "Item removido"}</span>
+                <small>{entry.actorEmail} - {new Date(entry.createdAt).toLocaleString()}</small>
+              </div>
+            );
+          })}
+          {state.audit.length === 0 && state.menuAudit.length === 0 ? <p className="empty-state">Nenhuma alteracao registrada ainda.</p> : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function normalizePermissionRows(rows: UserMapPermission[]) {
+  return rows
+    .map((entry) => ({
+      userId: entry.userId,
+      topologyId: entry.topologyId,
+      permissions: permissionOrder.filter((permission) => entry.permissions.includes(permission))
+    }))
+    .filter((entry) => entry.permissions.length > 0)
+    .sort((left, right) => `${left.userId}:${left.topologyId}`.localeCompare(`${right.userId}:${right.topologyId}`));
+}
+
+function normalizeMenuPermissionRows(rows: UserMenuPermission[]) {
+  return rows
+    .map((entry) => ({
+      userId: entry.userId,
+      menuId: entry.menuId,
+      permissions: permissionOrder.filter((permission) => entry.permissions.includes(permission))
+    }))
+    .filter((entry) => entry.permissions.length > 0)
+    .sort((left, right) => `${left.userId}:${left.menuId}`.localeCompare(`${right.userId}:${right.menuId}`));
+}
+
+function changedPermissionUserIds(
+  draftMaps: UserMapPermission[],
+  savedMaps: UserMapPermission[],
+  draftMenus: UserMenuPermission[],
+  savedMenus: UserMenuPermission[]
+) {
+  const users = new Set([...draftMaps, ...savedMaps, ...draftMenus, ...savedMenus].map((entry) => entry.userId));
+  return [...users].filter((userId) => (
+    JSON.stringify(normalizePermissionRows(draftMaps.filter((entry) => entry.userId === userId))) !== JSON.stringify(normalizePermissionRows(savedMaps.filter((entry) => entry.userId === userId))) ||
+    JSON.stringify(normalizeMenuPermissionRows(draftMenus.filter((entry) => entry.userId === userId))) !== JSON.stringify(normalizeMenuPermissionRows(savedMenus.filter((entry) => entry.userId === userId)))
+  ));
+}
+
+function normalizeGroupPermissionRows(rows: GroupMapPermission[]) {
+  return rows
+    .map((entry) => ({
+      groupId: entry.groupId,
+      topologyId: entry.topologyId,
+      permissions: permissionOrder.filter((permission) => entry.permissions.includes(permission))
+    }))
+    .filter((entry) => entry.permissions.length > 0)
+    .sort((left, right) => `${left.groupId}:${left.topologyId}`.localeCompare(`${right.groupId}:${right.topologyId}`));
+}
+
+function normalizeGroupMenuPermissionRows(rows: GroupMenuPermission[]) {
+  return rows
+    .map((entry) => ({
+      groupId: entry.groupId,
+      menuId: entry.menuId,
+      permissions: permissionOrder.filter((permission) => entry.permissions.includes(permission))
+    }))
+    .filter((entry) => entry.permissions.length > 0)
+    .sort((left, right) => `${left.groupId}:${left.menuId}`.localeCompare(`${right.groupId}:${right.menuId}`));
+}
+
+function changedGroupPermissionIds(
+  draftMaps: GroupMapPermission[],
+  savedMaps: GroupMapPermission[],
+  draftMenus: GroupMenuPermission[],
+  savedMenus: GroupMenuPermission[]
+) {
+  const groups = new Set([...draftMaps, ...savedMaps, ...draftMenus, ...savedMenus].map((entry) => entry.groupId));
+  return [...groups].filter((groupId) => (
+    JSON.stringify(normalizeGroupPermissionRows(draftMaps.filter((entry) => entry.groupId === groupId))) !== JSON.stringify(normalizeGroupPermissionRows(savedMaps.filter((entry) => entry.groupId === groupId))) ||
+    JSON.stringify(normalizeGroupMenuPermissionRows(draftMenus.filter((entry) => entry.groupId === groupId))) !== JSON.stringify(normalizeGroupMenuPermissionRows(savedMenus.filter((entry) => entry.groupId === groupId)))
+  ));
+}
+
+function updatePermissionRows<T extends { permissions: PermissionKey[] }>(
+  current: T[],
+  subjectId: string,
+  resourceKey: keyof Omit<T, "userId" | "groupId" | "permissions" | "updatedAt">,
+  resourceId: string,
+  permission: PermissionKey,
+  checked: boolean,
+  subjectKey: "userId" | "groupId" = "userId"
+) {
+  const otherRows = current.filter((entry) => !(String((entry as any)[subjectKey]) === subjectId && String(entry[resourceKey]) === resourceId));
+  const currentPermissions = current.find((entry) => String((entry as any)[subjectKey]) === subjectId && String(entry[resourceKey]) === resourceId)?.permissions ?? [];
+  const next = new Set(currentPermissions);
+  if (checked) {
+    next.add(permission);
+    if (permission === "edit") next.add("view");
+  } else {
+    next.delete(permission);
+    if (permission === "view") next.delete("edit");
+  }
+  const permissions = permissionOrder.filter((key) => next.has(key));
+  return permissions.length > 0
+    ? [...otherRows, { [subjectKey]: subjectId, [resourceKey]: resourceId, permissions } as T]
+    : otherRows;
+}
+
+function PermissionState({ permissions }: { permissions: PermissionKey[] }) {
+  return (
+    <div className="permission-state-cell">
+      {permissions.length > 0 ? permissions.map((permission) => (
+        <span className="permission-pill" key={permission}>{permissionLabels[permission]}</span>
+      )) : <span className="permission-pill muted">Sem acesso</span>}
     </div>
   );
 }
