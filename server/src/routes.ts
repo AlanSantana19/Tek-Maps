@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { requireAuth, signUserToken } from "./auth.js";
 import { appVersion } from "./version.js";
+import type { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import type { AccessUserRepository } from "./repositories/AccessUserRepository.js";
 import type { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import type { SettingsRepository } from "./repositories/SettingsRepository.js";
@@ -17,19 +18,22 @@ const topologySchema = z.object({
   nodes: z.array(z.object({
     id: z.string(),
     hostId: z.string().optional(),
-    type: z.enum(["switch", "router", "radio", "firewall", "server", "unknown"]),
+    type: z.enum(["switch", "router", "radio", "firewall", "server", "lte", "unknown"]),
     label: z.string(),
     position: z.object({ x: z.number(), y: z.number() }),
     iconSize: z.number().min(16).max(128).optional(),
+    labelFontSize: z.number().min(8).max(72).optional(),
     labelPosition: z.enum(["above", "below"]).optional(),
     color: z.string().max(20).optional(),
     showBackground: z.boolean().optional(),
+    showIp: z.boolean().optional(),
     zabbixServerId: z.string().uuid().optional(),
     statusItemKey: z.string().max(180).optional(),
     onlineValue: z.string().max(80).optional(),
     offlineValue: z.string().max(80).optional(),
     advancedMode: z.boolean().optional(),
-    customIconId: z.string().uuid().optional()
+    customIconId: z.string().uuid().optional(),
+    handles: z.array(z.string()).optional()
   })),
   edges: z.array(z.object({
     id: z.string(),
@@ -54,11 +58,20 @@ const topologySchema = z.object({
     targetInterfaceAlias: z.string().max(180).optional(),
     sourceInterface: z.string().max(120).optional(),
     targetInterface: z.string().max(120).optional(),
+    cableType: z.enum(["fiber", "utp", "radio", "wireless", "vpn", "other"]).optional(),
     color: z.string().max(20).optional(),
     strokeWidth: z.number().min(1).max(12).optional(),
-    lineStyle: z.enum(["solid", "dashed"]).optional(),
+    lineStyle: z.enum(["solid", "dashed", "dotted", "dashdot"]).optional(),
+    badgeFontSize: z.number().min(8).max(24).optional(),
     showTraffic: z.boolean().optional(),
-    showLabel: z.boolean().optional()
+    showLabel: z.boolean().optional(),
+    waypointDX: z.number().optional(),
+    waypointDY: z.number().optional(),
+    showSignal: z.boolean().optional(),
+    signalLabel: z.string().max(120).optional(),
+    signalTxMetricKey: z.string().max(240).optional(),
+    signalRxMetricKey: z.string().max(240).optional(),
+    signalHostId: z.string().optional()
   }))
 });
 
@@ -76,6 +89,16 @@ const zabbixTestSchema = z.object({
   url: z.string().min(3).max(300).optional(),
   user: z.string().min(1).max(120).optional(),
   password: z.string().max(300).optional()
+});
+
+const accessGroupSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(500).optional(),
+  role: z.enum(["admin", "operator", "viewer"])
+});
+
+const accessGroupMemberSchema = z.object({
+  userId: z.string().uuid()
 });
 
 const accessUserSchema = z.object({
@@ -99,7 +122,8 @@ export function createRoutes(
   cache: ZabbixCacheRepository,
   settings: SettingsRepository,
   users: AccessUserRepository,
-  icons: CustomIconRepository
+  icons: CustomIconRepository,
+  groups: AccessGroupRepository
 ) {
   const router = express.Router();
 
@@ -447,6 +471,93 @@ export function createRoutes(
   router.delete("/admin/users/:id", async (req, res, next) => {
     try {
       const removed = await users.remove(req.params.id);
+      if (!removed) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/admin/groups", async (_req, res, next) => {
+    try {
+      res.json(await groups.list());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/admin/groups", async (req, res, next) => {
+    try {
+      const parsed = accessGroupSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_group", details: parsed.error.flatten() });
+        return;
+      }
+      res.status(201).json(await groups.create(parsed.data));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/admin/groups/:id", async (req, res, next) => {
+    try {
+      const parsed = accessGroupSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_group", details: parsed.error.flatten() });
+        return;
+      }
+      const group = await groups.update(req.params.id, parsed.data);
+      if (!group) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      res.json(group);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/admin/groups/:id", async (req, res, next) => {
+    try {
+      const removed = await groups.remove(req.params.id);
+      if (!removed) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/admin/groups/:id/members", async (req, res, next) => {
+    try {
+      res.json(await groups.listMembers(req.params.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/admin/groups/:id/members", async (req, res, next) => {
+    try {
+      const parsed = accessGroupMemberSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_member", details: parsed.error.flatten() });
+        return;
+      }
+      await groups.addMember(req.params.id, parsed.data.userId);
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/admin/groups/:id/members/:userId", async (req, res, next) => {
+    try {
+      const removed = await groups.removeMember(req.params.id, req.params.userId);
       if (!removed) {
         res.status(404).json({ error: "not_found" });
         return;

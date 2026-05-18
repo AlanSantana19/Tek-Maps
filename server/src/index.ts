@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import { pool } from "./db/pool.js";
 import { logger } from "./logger.js";
 import { Hub } from "./realtime/Hub.js";
+import { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import { AccessUserRepository } from "./repositories/AccessUserRepository.js";
 import { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import { SettingsRepository } from "./repositories/SettingsRepository.js";
@@ -25,8 +26,9 @@ const topologyRepository = new TopologyRepository(pool);
 const cacheRepository = new ZabbixCacheRepository(pool);
 const settingsRepository = new SettingsRepository(pool);
 const accessUserRepository = new AccessUserRepository(pool);
+const accessGroupRepository = new AccessGroupRepository(pool);
 const customIconRepository = new CustomIconRepository(pool);
-app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository));
+app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ error }, "request failed");
   res.status(500).json({ error: "internal_error" });

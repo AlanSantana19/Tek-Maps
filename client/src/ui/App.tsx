@@ -39,29 +39,36 @@ import { Background, BackgroundVariant, ReactFlow, useEdgesState, useNodesState 
 import { LinkEdge, SnapshotsContext } from "./LinkEdge";
 import {
   AUTH_EXPIRED_EVENT,
+  addGroupMember,
   apiGet,
+  createAccessGroup,
   createAccessUser,
   createCustomIcon,
   getAppVersion,
   getToken,
   getZabbixServerHosts,
   inspectZabbixItems,
+  listAccessGroups,
   listCustomIcons,
+  listGroupMembers,
   login,
   logout,
   openSnapshotsSocket,
+  removeAccessGroup,
   removeAccessUser,
   removeCustomIcon,
+  removeGroupMember,
   removeTopology,
   removeZabbixConfig,
   resetAccessUserPassword,
   saveTopology,
   saveZabbixConfig,
   testZabbixConfig,
+  updateAccessGroup,
   updateAccessUser,
   updateZabbixConfig
 } from "../api";
-import type { AccessUser, AppVersion, CustomIcon, DeviceSnapshot, PortMetric, Topology, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
+import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CustomIcon, DeviceSnapshot, PortMetric, Topology, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
 import { DeviceNode } from "./DeviceNode";
 
 const nodeTypes = { device: DeviceNode };
@@ -154,6 +161,7 @@ type LinkEdgeData = {
   signalLabel?: string;
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
+  signalHostId?: string;
 };
 
 type PaletteItem = {
@@ -1021,7 +1029,8 @@ function TopologyEditor({
     showSignal: false,
     signalLabel: "",
     signalTxMetricKey: "",
-    signalRxMetricKey: ""
+    signalRxMetricKey: "",
+    signalHostId: ""
   });
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
   const [zabbixServers, setZabbixServers] = useState<ZabbixServerConfig[]>([]);
@@ -1036,6 +1045,10 @@ function TopologyEditor({
   const sourceInterfaces = interfaceOptionsForNode(draftSourceNode);
   const filteredSourceInterfaces = filterInterfaces(sourceInterfaces, linkForm.sourceSearch, onlyWithTraffic);
   const selectedSourceInterface = sourceInterfaces.find((port) => port.id === linkForm.sourceOutInterface);
+  const signalEffectiveHostId = linkForm.signalHostId || draftSourceNode?.data.hostId;
+  const signalAllMetrics = signalEffectiveHostId ? (snapshotsByHost.get(String(signalEffectiveHostId))?.metrics ?? []) : [];
+  const signalOpticalMetrics = signalAllMetrics.filter((m) => m.unit === "dBm" || /optical|sfp|pon|rx\.power|tx\.power|optic|rssi|snr|signal/i.test(m.key) || /optical|sfp|pon|rx power|tx power|rssi|snr/i.test(m.label));
+  const signalOtherMetrics = signalAllMetrics.filter((m) => !signalOpticalMetrics.includes(m));
   const filteredHostPickerHosts = hostPickerHosts.filter((host) => {
     const search = hostPickerSearch.trim().toLowerCase();
     if (!search) {
@@ -1199,7 +1212,8 @@ function TopologyEditor({
       showSignal: data?.showSignal ?? false,
       signalLabel: data?.signalLabel ?? "",
       signalTxMetricKey: data?.signalTxMetricKey ?? "",
-      signalRxMetricKey: data?.signalRxMetricKey ?? ""
+      signalRxMetricKey: data?.signalRxMetricKey ?? "",
+      signalHostId: data?.signalHostId ?? data?.sourceHostId ?? ""
     });
   }
 
@@ -1231,7 +1245,8 @@ function TopologyEditor({
       showSignal: linkForm.showSignal,
       signalLabel: linkForm.signalLabel.trim() || undefined,
       signalTxMetricKey: linkForm.signalTxMetricKey || undefined,
-      signalRxMetricKey: linkForm.signalRxMetricKey || undefined
+      signalRxMetricKey: linkForm.signalRxMetricKey || undefined,
+      signalHostId: linkForm.signalHostId || draftSourceNode?.data.hostId
     };
 
     if (selectedEdgeId) {
@@ -2070,44 +2085,79 @@ function TopologyEditor({
                 <span>Exibir nome do cabo</span>
               </label>
             </div>
-          </div>
 
-          <div className="element-section">
-            <div className="element-section-title"><Activity size={14} />Sinal</div>
-            <label className="element-checkbox">
-              <input type="checkbox" checked={linkForm.showSignal} onChange={(e) => setLinkForm({ ...linkForm, showSignal: e.target.checked })} />
-              <span>Exibir informações de sinal no tooltip</span>
-            </label>
-            {linkForm.showSignal && (
-              <>
-                <label>
-                  Rótulo do sinal
-                  <input
-                    value={linkForm.signalLabel}
-                    onChange={(e) => setLinkForm({ ...linkForm, signalLabel: e.target.value })}
-                    placeholder="ex: Fibra Óptica, RSSI..."
-                  />
-                </label>
-                <label>
-                  Métrica TX de sinal
-                  <select value={linkForm.signalTxMetricKey} onChange={(e) => setLinkForm({ ...linkForm, signalTxMetricKey: e.target.value })}>
-                    <option value="">— nenhuma —</option>
-                    {(draftSourceNode?.data.snapshot?.metrics ?? []).map((m) => (
-                      <option key={m.key} value={m.key}>{m.label || m.key}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Métrica RX de sinal
-                  <select value={linkForm.signalRxMetricKey} onChange={(e) => setLinkForm({ ...linkForm, signalRxMetricKey: e.target.value })}>
-                    <option value="">— nenhuma —</option>
-                    {(draftSourceNode?.data.snapshot?.metrics ?? []).map((m) => (
-                      <option key={m.key} value={m.key}>{m.label || m.key}</option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            )}
+            <div className="element-section">
+              <div className="element-section-title"><Activity size={14} />Sinal Óptico</div>
+              <label className="element-checkbox">
+                <input type="checkbox" checked={linkForm.showSignal} onChange={(e) => setLinkForm({ ...linkForm, showSignal: e.target.checked })} />
+                <span>Exibir sinal no tooltip do cabo</span>
+              </label>
+              {linkForm.showSignal && (
+                <>
+                  <div className="two-col-fields">
+                    <label>
+                      Equipamento
+                      <select value={linkForm.signalHostId} onChange={(e) => setLinkForm({ ...linkForm, signalHostId: e.target.value, signalTxMetricKey: "", signalRxMetricKey: "" })}>
+                        {draftSourceNode?.data.hostId && (
+                          <option value={draftSourceNode.data.hostId}>Origem: {draftSourceNode.data.label}</option>
+                        )}
+                        {draftTargetNode?.data.hostId && (
+                          <option value={draftTargetNode.data.hostId}>Destino: {draftTargetNode.data.label}</option>
+                        )}
+                      </select>
+                    </label>
+                    <label>
+                      Rótulo
+                      <input
+                        value={linkForm.signalLabel}
+                        onChange={(e) => setLinkForm({ ...linkForm, signalLabel: e.target.value })}
+                        placeholder="ex: Óptica, RSSI..."
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Potência TX
+                    <select value={linkForm.signalTxMetricKey} onChange={(e) => setLinkForm({ ...linkForm, signalTxMetricKey: e.target.value })}>
+                      <option value="">— nenhuma —</option>
+                      {signalOpticalMetrics.length > 0 && (
+                        <optgroup label="Óptico / Sinal">
+                          {signalOpticalMetrics.map((m) => (
+                            <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {signalOtherMetrics.length > 0 && (
+                        <optgroup label="Outros">
+                          {signalOtherMetrics.map((m) => (
+                            <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Potência RX
+                    <select value={linkForm.signalRxMetricKey} onChange={(e) => setLinkForm({ ...linkForm, signalRxMetricKey: e.target.value })}>
+                      <option value="">— nenhuma —</option>
+                      {signalOpticalMetrics.length > 0 && (
+                        <optgroup label="Óptico / Sinal">
+                          {signalOpticalMetrics.map((m) => (
+                            <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {signalOtherMetrics.length > 0 && (
+                        <optgroup label="Outros">
+                          {signalOtherMetrics.map((m) => (
+                            <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="element-footer">
@@ -2583,6 +2633,33 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 function AdminUsers() {
+  const [adminTab, setAdminTab] = useState<"users" | "groups">("users");
+
+  return (
+    <section className="page">
+      <PageHeader title="Admin" subtitle="Crie usuarios e defina o nivel de acesso ao Tek Map." />
+      <div className="element-tabs" role="tablist" style={{ marginBottom: 18, maxWidth: 320 }}>
+        <button
+          role="tab"
+          className={adminTab === "users" ? "active" : ""}
+          onClick={() => setAdminTab("users")}
+        >
+          Usuarios
+        </button>
+        <button
+          role="tab"
+          className={adminTab === "groups" ? "active" : ""}
+          onClick={() => setAdminTab("groups")}
+        >
+          Grupos
+        </button>
+      </div>
+      {adminTab === "users" ? <AdminUsersTab /> : <AdminGroupsTab />}
+    </section>
+  );
+}
+
+function AdminUsersTab() {
   const [users, setUsers] = useState<AccessUser[]>([]);
   const [form, setForm] = useState({ name: "", email: "", role: "viewer" as AccessUser["role"], active: true, password: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2666,88 +2743,332 @@ function AdminUsers() {
   }
 
   return (
-    <section className="page">
-      <PageHeader title="Admin" subtitle="Crie usuarios e defina o nivel de acesso ao Tek Map." />
-      <div className="admin-layout">
-        <form className="panel form-grid" onSubmit={handleSubmit}>
-          <h2>{editingId ? "Editar usuario" : "Novo usuario"}</h2>
+    <div className="admin-layout">
+      <form className="panel form-grid" onSubmit={handleSubmit}>
+        <h2>{editingId ? "Editar usuario" : "Novo usuario"}</h2>
+        <label>
+          Nome
+          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        </label>
+        <label>
+          Email
+          <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+        </label>
+        <label>
+          Perfil
+          <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AccessUser["role"] })}>
+            <option value="admin">Admin</option>
+            <option value="operator">Operador</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </label>
+        {!editingId ? (
           <label>
-            Nome
-            <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            Senha inicial
+            <input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
           </label>
-          <label>
-            Email
-            <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          </label>
-          <label>
-            Perfil
-            <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AccessUser["role"] })}>
-              <option value="admin">Admin</option>
-              <option value="operator">Operador</option>
-              <option value="viewer">Viewer</option>
-            </select>
-          </label>
-          {!editingId ? (
-            <label>
-              Senha inicial
-              <input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
-            </label>
-          ) : null}
-          <label className="check-row">
-            <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
-            Acesso ativo
-          </label>
-          <div className="action-row">
-            {editingId ? (
-              <button className="secondary-button" type="button" onClick={resetForm}>
-                Cancelar
-              </button>
-            ) : null}
-            <button className="save-button" type="submit">
-              {editingId ? <Save size={18} /> : <Plus size={18} />}
-              {editingId ? "Salvar usuario" : "Criar usuario"}
+        ) : null}
+        <label className="check-row">
+          <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
+          Acesso ativo
+        </label>
+        <div className="action-row">
+          {editingId ? (
+            <button className="secondary-button" type="button" onClick={resetForm}>
+              Cancelar
             </button>
-          </div>
-          {status ? <p className="form-status">{status}</p> : null}
-        </form>
+          ) : null}
+          <button className="save-button" type="submit">
+            {editingId ? <Save size={18} /> : <Plus size={18} />}
+            {editingId ? "Salvar usuario" : "Criar usuario"}
+          </button>
+        </div>
+        {status ? <p className="form-status">{status}</p> : null}
+      </form>
+      <section className="panel">
+        <h2>Usuarios cadastrados</h2>
+        <div className="user-list">
+          {users.map((user) => (
+            <div className="user-row" key={user.id}>
+              <div>
+                <strong>{user.name}</strong>
+                <span>{user.email}</span>
+              </div>
+              <span className="role-pill">{user.role}</span>
+              <span className={`state-pill ${user.active ? "active" : ""}`}>{user.active ? "Ativo" : "Inativo"}</span>
+              <div className="row-actions">
+                <button
+                  className="icon-action-button"
+                  type="button"
+                  onClick={() => handleEdit(user)}
+                  disabled={busyUserId === user.id}
+                  aria-label={`Editar ${user.name}`}
+                  title="Editar"
+                >
+                  <Pencil size={18} />
+                </button>
+                <button
+                  className="icon-action-button"
+                  type="button"
+                  onClick={() => handleResetPassword(user)}
+                  disabled={busyUserId === user.id}
+                  aria-label={`Resetar senha de ${user.name}`}
+                  title="Resetar senha"
+                >
+                  <KeyRound size={18} />
+                </button>
+                <button
+                  className="icon-action-button danger"
+                  type="button"
+                  onClick={() => handleRemove(user)}
+                  disabled={busyUserId === user.id}
+                  aria-label={`Remover ${user.name}`}
+                  title="Remover"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {users.length === 0 ? <p className="empty-state">Nenhum usuario criado ainda.</p> : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AdminGroupsTab() {
+  const [groups, setGroups] = useState<AccessGroup[]>([]);
+  const [form, setForm] = useState({ name: "", description: "", role: "viewer" as AccessGroup["role"] });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<AccessGroup | null>(null);
+  const [members, setMembers] = useState<AccessGroupMember[]>([]);
+  const [allUsers, setAllUsers] = useState<AccessUser[]>([]);
+  const [addUserId, setAddUserId] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void listAccessGroups().then(setGroups).catch(() => setStatus("Nao foi possivel carregar grupos."));
+    void apiGet<AccessUser[]>("/api/admin/users").then(setAllUsers).catch(() => {});
+  }, []);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setStatus(null);
+    try {
+      if (editingId) {
+        const updated = await updateAccessGroup(editingId, { name: form.name, description: form.description || undefined, role: form.role });
+        setGroups((current) => current.map((g) => g.id === updated.id ? updated : g));
+        resetForm();
+        setStatus("Grupo atualizado.");
+      } else {
+        const created = await createAccessGroup({ name: form.name, description: form.description || undefined, role: form.role });
+        setGroups((current) => [created, ...current]);
+        resetForm();
+        setStatus("Grupo criado.");
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao salvar grupo.");
+    }
+  }
+
+  function handleEdit(group: AccessGroup) {
+    setEditingId(group.id);
+    setForm({ name: group.name, description: group.description ?? "", role: group.role });
+    setSelectedGroup(null);
+    setStatus(null);
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setForm({ name: "", description: "", role: "viewer" });
+  }
+
+  async function handleRemoveGroup(group: AccessGroup) {
+    if (!window.confirm(`Remover o grupo "${group.name}"?`)) return;
+    setStatus(null);
+    setBusyId(group.id);
+    try {
+      await removeAccessGroup(group.id);
+      setGroups((current) => current.filter((g) => g.id !== group.id));
+      if (selectedGroup?.id === group.id) setSelectedGroup(null);
+      setStatus("Grupo removido.");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao remover grupo.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function openMembers(group: AccessGroup) {
+    setSelectedGroup(group);
+    setAddUserId("");
+    setStatus(null);
+    try {
+      const list = await listGroupMembers(group.id);
+      setMembers(list);
+    } catch {
+      setStatus("Nao foi possivel carregar membros.");
+    }
+  }
+
+  async function handleAddMember() {
+    if (!selectedGroup || !addUserId) return;
+    setBusyId("add");
+    try {
+      await addGroupMember(selectedGroup.id, addUserId);
+      const list = await listGroupMembers(selectedGroup.id);
+      setMembers(list);
+      setGroups((current) => current.map((g) => g.id === selectedGroup.id ? { ...g, memberCount: list.length } : g));
+      setAddUserId("");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao adicionar membro.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    if (!selectedGroup) return;
+    setBusyId(userId);
+    try {
+      await removeGroupMember(selectedGroup.id, userId);
+      const list = await listGroupMembers(selectedGroup.id);
+      setMembers(list);
+      setGroups((current) => current.map((g) => g.id === selectedGroup.id ? { ...g, memberCount: list.length } : g));
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao remover membro.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const memberUserIds = new Set(members.map((m) => m.userId));
+  const availableUsers = allUsers.filter((u) => !memberUserIds.has(u.id));
+
+  return (
+    <div className="admin-layout">
+      <form className="panel form-grid" onSubmit={handleSubmit}>
+        <h2>{editingId ? "Editar grupo" : "Novo grupo"}</h2>
+        <label>
+          Nome
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        </label>
+        <label>
+          Descricao
+          <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </label>
+        <label>
+          Perfil padrao
+          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as AccessGroup["role"] })}>
+            <option value="admin">Admin</option>
+            <option value="operator">Operador</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </label>
+        <div className="action-row">
+          {editingId ? (
+            <button className="secondary-button" type="button" onClick={resetForm}>Cancelar</button>
+          ) : null}
+          <button className="save-button" type="submit">
+            {editingId ? <Save size={18} /> : <Plus size={18} />}
+            {editingId ? "Salvar grupo" : "Criar grupo"}
+          </button>
+        </div>
+        {status ? <p className="form-status">{status}</p> : null}
+      </form>
+
+      {selectedGroup ? (
         <section className="panel">
-          <h2>Usuarios cadastrados</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <button className="icon-action-button" type="button" onClick={() => setSelectedGroup(null)} title="Voltar">
+              <ArrowLeft size={18} />
+            </button>
+            <h2 style={{ margin: 0 }}>Membros — {selectedGroup.name}</h2>
+          </div>
+          {availableUsers.length > 0 ? (
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <select
+                value={addUserId}
+                onChange={(e) => setAddUserId(e.target.value)}
+                style={{ flex: 1 }}
+              >
+                <option value="">Selecione um usuario...</option>
+                {availableUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+              <button
+                className="save-button"
+                type="button"
+                onClick={handleAddMember}
+                disabled={!addUserId || busyId === "add"}
+              >
+                <Users size={16} />
+                Adicionar
+              </button>
+            </div>
+          ) : null}
           <div className="user-list">
-            {users.map((user) => (
-              <div className="user-row" key={user.id}>
+            {members.map((member) => (
+              <div className="user-row" key={member.userId}>
                 <div>
-                  <strong>{user.name}</strong>
-                  <span>{user.email}</span>
+                  <strong>{member.name}</strong>
+                  <span>{member.email}</span>
                 </div>
-                <span className="role-pill">{user.role}</span>
-                <span className={`state-pill ${user.active ? "active" : ""}`}>{user.active ? "Ativo" : "Inativo"}</span>
+                <span className="role-pill">{member.role}</span>
+                <div className="row-actions">
+                  <button
+                    className="icon-action-button danger"
+                    type="button"
+                    onClick={() => handleRemoveMember(member.userId)}
+                    disabled={busyId === member.userId}
+                    title="Remover do grupo"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {members.length === 0 ? <p className="empty-state">Nenhum membro neste grupo.</p> : null}
+          </div>
+        </section>
+      ) : (
+        <section className="panel">
+          <h2>Grupos cadastrados</h2>
+          <div className="user-list">
+            {groups.map((group) => (
+              <div className="user-row" key={group.id} style={{ gridTemplateColumns: "minmax(0,1fr) auto auto auto auto" }}>
+                <div>
+                  <strong>{group.name}</strong>
+                  <span>{group.description ?? ""}</span>
+                </div>
+                <span className="role-pill">{group.role}</span>
+                <span style={{ color: "#94a3b8", fontSize: 12, whiteSpace: "nowrap" }}>{group.memberCount} membro(s)</span>
                 <div className="row-actions">
                   <button
                     className="icon-action-button"
                     type="button"
-                    onClick={() => handleEdit(user)}
-                    disabled={busyUserId === user.id}
-                    aria-label={`Editar ${user.name}`}
+                    onClick={() => openMembers(group)}
+                    title="Gerenciar membros"
+                  >
+                    <Users size={18} />
+                  </button>
+                  <button
+                    className="icon-action-button"
+                    type="button"
+                    onClick={() => handleEdit(group)}
+                    disabled={busyId === group.id}
                     title="Editar"
                   >
                     <Pencil size={18} />
                   </button>
                   <button
-                    className="icon-action-button"
-                    type="button"
-                    onClick={() => handleResetPassword(user)}
-                    disabled={busyUserId === user.id}
-                    aria-label={`Resetar senha de ${user.name}`}
-                    title="Resetar senha"
-                  >
-                    <KeyRound size={18} />
-                  </button>
-                  <button
                     className="icon-action-button danger"
                     type="button"
-                    onClick={() => handleRemove(user)}
-                    disabled={busyUserId === user.id}
-                    aria-label={`Remover ${user.name}`}
+                    onClick={() => handleRemoveGroup(group)}
+                    disabled={busyId === group.id}
                     title="Remover"
                   >
                     <Trash2 size={18} />
@@ -2755,11 +3076,11 @@ function AdminUsers() {
                 </div>
               </div>
             ))}
-            {users.length === 0 ? <p className="empty-state">Nenhum usuario criado ainda.</p> : null}
+            {groups.length === 0 ? <p className="empty-state">Nenhum grupo criado ainda.</p> : null}
           </div>
         </section>
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
 
@@ -2852,14 +3173,13 @@ function InterfaceMetricSummary({ port }: { port?: PortMetric }) {
 
   return (
     <div className="interface-metric-summary">
-      <span className="iface-name">{interfaceLabel(port)}</span>
       {hasTraffic ? (
         <>
           <span className="iface-rx">RX: {formatBps(port.inBps)}</span>
           <span className="iface-tx">TX: {formatBps(port.outBps)}</span>
           {port.speedMbps ? <span className="iface-speed">Velocidade: {port.speedMbps} Mbps</span> : null}
           {port.utilizationPct !== undefined ? <span className="iface-util">Uso: {port.utilizationPct}%</span> : null}
-          {port.operStatus ? <span className={`iface-status iface-status--${port.operStatus}`}>Link: {port.operStatus}</span> : null}
+          {port.operStatus ? <span className={`iface-status iface-status--${port.operStatus}`}>{port.operStatus === "up" ? "UP" : port.operStatus === "down" ? "DOWN" : port.operStatus.toUpperCase()}</span> : null}
         </>
       ) : (
         <span className="iface-no-traffic">Sem dados de tráfego associados</span>
@@ -2958,7 +3278,8 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       showSignal: edge.showSignal,
       signalLabel: edge.signalLabel,
       signalTxMetricKey: edge.signalTxMetricKey,
-      signalRxMetricKey: edge.signalRxMetricKey
+      signalRxMetricKey: edge.signalRxMetricKey,
+      signalHostId: edge.signalHostId
     }
   });
 }
@@ -3000,7 +3321,8 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     showSignal: data?.showSignal,
     signalLabel: data?.signalLabel,
     signalTxMetricKey: data?.signalTxMetricKey,
-    signalRxMetricKey: data?.signalRxMetricKey
+    signalRxMetricKey: data?.signalRxMetricKey,
+    signalHostId: data?.signalHostId
   };
 }
 
@@ -3045,7 +3367,8 @@ function defaultLinkForm() {
     showSignal: false,
     signalLabel: "",
     signalTxMetricKey: "",
-    signalRxMetricKey: ""
+    signalRxMetricKey: "",
+    signalHostId: ""
   };
 }
 

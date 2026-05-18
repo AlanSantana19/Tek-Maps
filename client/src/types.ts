@@ -105,6 +105,7 @@ export interface Topology {
     signalLabel?: string;
     signalTxMetricKey?: string;
     signalRxMetricKey?: string;
+    signalHostId?: string;
   }>;
 }
 
@@ -172,4 +173,21 @@ export interface AccessUser {
   role: "admin" | "operator" | "viewer";
   active: boolean;
   createdAt?: string;
+}
+
+export interface AccessGroup {
+  id: string;
+  name: string;
+  description?: string;
+  role: "admin" | "operator" | "viewer";
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface AccessGroupMember {
+  userId: string;
+  name: string;
+  email: string;
+  role: "admin" | "operator" | "viewer";
+  joinedAt: string;
 }

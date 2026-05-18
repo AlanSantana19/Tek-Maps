@@ -1,4 +1,4 @@
-import type { AccessUser, AppVersion, CustomIcon, DeviceSnapshot, Topology, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
+import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CustomIcon, DeviceSnapshot, Topology, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
 
 const TOKEN_KEY = "tek-map-token";
 export const AUTH_EXPIRED_EVENT = "tek-map-auth-expired";
@@ -122,6 +122,34 @@ export async function removeAccessUser(id: string) {
 
 export async function resetAccessUserPassword(id: string, password: string) {
   return apiSend<AccessUser>(`/api/admin/users/${id}/password`, "PATCH", { password });
+}
+
+export async function listAccessGroups() {
+  return apiGet<AccessGroup[]>("/api/admin/groups");
+}
+
+export async function createAccessGroup(data: { name: string; description?: string; role: "admin" | "operator" | "viewer" }) {
+  return apiSend<AccessGroup>("/api/admin/groups", "POST", data);
+}
+
+export async function updateAccessGroup(id: string, data: { name: string; description?: string; role: "admin" | "operator" | "viewer" }) {
+  return apiSend<AccessGroup>(`/api/admin/groups/${id}`, "PUT", data);
+}
+
+export async function removeAccessGroup(id: string) {
+  return apiDelete(`/api/admin/groups/${id}`);
+}
+
+export async function listGroupMembers(groupId: string) {
+  return apiGet<AccessGroupMember[]>(`/api/admin/groups/${groupId}/members`);
+}
+
+export async function addGroupMember(groupId: string, userId: string) {
+  return apiSend<{ ok: boolean }>(`/api/admin/groups/${groupId}/members`, "POST", { userId });
+}
+
+export async function removeGroupMember(groupId: string, userId: string) {
+  return apiDelete(`/api/admin/groups/${groupId}/members/${userId}`);
 }
 
 export async function listCustomIcons() {
