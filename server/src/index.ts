@@ -1,4 +1,5 @@
 import http from "node:http";
+import compression from "compression";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -10,6 +11,7 @@ import { Hub } from "./realtime/Hub.js";
 import { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import { AccessUserRepository } from "./repositories/AccessUserRepository.js";
 import { CustomIconRepository } from "./repositories/CustomIconRepository.js";
+import { MapPermissionRepository } from "./repositories/MapPermissionRepository.js";
 import { SettingsRepository } from "./repositories/SettingsRepository.js";
 import { TopologyRepository } from "./repositories/TopologyRepository.js";
 import { ZabbixCacheRepository } from "./repositories/ZabbixCacheRepository.js";
@@ -17,6 +19,7 @@ import { createRoutes } from "./routes.js";
 import { ZabbixSyncService } from "./zabbix/ZabbixSyncService.js";
 
 const app = express();
+app.use(compression());
 app.use(helmet());
 app.use(cors({ origin: config.CORS_ORIGIN }));
 app.use(express.json({ limit: "2mb" }));
@@ -28,7 +31,8 @@ const settingsRepository = new SettingsRepository(pool);
 const accessUserRepository = new AccessUserRepository(pool);
 const accessGroupRepository = new AccessGroupRepository(pool);
 const customIconRepository = new CustomIconRepository(pool);
-app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository));
+const mapPermissionRepository = new MapPermissionRepository(pool);
+app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository, mapPermissionRepository));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ error }, "request failed");
   res.status(500).json({ error: "internal_error" });
