@@ -41,12 +41,7 @@ export function DeviceNode({ data }: DeviceNodeProps) {
   const clampedSize = Math.max(16, Math.min(iconSize, 128));
   const style = { "--node-icon-size": `${clampedSize}px` } as CSSProperties;
 
-  // Center handles on the icon regardless of label position.
-  const iconCenterTop = labelPosition === "above"
-    ? `calc(100% - ${clampedSize / 2}px)`
-    : `${clampedSize / 2}px`;
-
-  const handleStyle: CSSProperties = { ...INVISIBLE_HANDLE, top: iconCenterTop };
+  const handleStyle: CSSProperties = { ...INVISIBLE_HANDLE, top: "50%" };
 
   return (
     <div className={`device-node topology-symbol ${status} ${showBackground ? "" : "no-background"} label-${labelPosition}`} style={style}>
