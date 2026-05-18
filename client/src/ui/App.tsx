@@ -35,7 +35,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Connection, Edge, Node, OnEdgesChange, OnNodesChange, ReactFlowInstance } from "@xyflow/react";
 import type { DragEvent, FormEvent, MouseEvent } from "react";
-import { Background, BackgroundVariant, MarkerType, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
+import { Background, BackgroundVariant, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
 import { LinkEdge, SnapshotsContext } from "./LinkEdge";
 import {
   AUTH_EXPIRED_EVENT,
@@ -87,6 +87,7 @@ type DeviceNodeData = {
   customIconId?: string;
   customIconUrl?: string;
   snapshot?: DeviceSnapshot;
+  handles?: string[];
 };
 
 type DeviceFlowNode = Node<DeviceNodeData, "device">;
@@ -147,6 +148,8 @@ type LinkEdgeData = {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
+  waypointDX?: number;
+  waypointDY?: number;
 };
 
 type PaletteItem = {
@@ -498,6 +501,31 @@ export function App() {
     }));
   }
 
+  function moveLinkEdge(edgeId: string, sourceId: string, targetId: string) {
+    const sourceNode = nodes.find((n) => n.id === sourceId);
+    const targetNode = nodes.find((n) => n.id === targetId);
+    setEdges((current) => current.map((edge) => {
+      if (edge.id !== edgeId) return edge;
+      const data = edge.data as LinkEdgeData | undefined;
+      return buildLinkEdge({
+        ...edge,
+        source: sourceId,
+        target: targetId,
+        data: {
+          ...data,
+          sourceHostId: sourceNode?.data.hostId,
+          targetHostId: targetNode?.data.hostId,
+          sourceOutInterface: undefined,
+          sourceInItemId: undefined,
+          sourceOutItemId: undefined,
+          sourceStatusItemId: undefined,
+          sourceInterfaceName: undefined,
+          sourceInterfaceAlias: undefined,
+        }
+      });
+    }));
+  }
+
   function removeLinkEdge(edgeId: string) {
     setEdges((current) => current.filter((edge) => edge.id !== edgeId));
   }
@@ -637,6 +665,7 @@ export function App() {
             onDuplicateDeviceNode={duplicateDeviceNode}
             onCreateLinkEdge={createLinkEdge}
             onUpdateLinkEdge={updateLinkEdge}
+            onMoveLinkEdge={moveLinkEdge}
             onRemoveLinkEdge={removeLinkEdge}
             onSave={persistTopology}
             onNodesChange={onNodesChange}
@@ -886,6 +915,7 @@ function TopologyEditor({
   onDuplicateDeviceNode,
   onCreateLinkEdge,
   onUpdateLinkEdge,
+  onMoveLinkEdge,
   onRemoveLinkEdge,
   onSave,
   onNodesChange,
@@ -920,6 +950,7 @@ function TopologyEditor({
     advancedMode: boolean;
     customIconId?: string;
     customIconUrl?: string;
+    handles?: string[];
   }) => void;
   onBulkUpdateNodes: (iconSize: number, labelFontSize: number) => void;
   onBulkUpdateEdges: (badgeFontSize: number) => void;
@@ -927,6 +958,7 @@ function TopologyEditor({
   onDuplicateDeviceNode: (nodeId: string) => string | null;
   onCreateLinkEdge: (source: string, target: string, value: LinkEdgeData & { label?: string }) => string;
   onUpdateLinkEdge: (edgeId: string, value: LinkEdgeData & { label?: string }) => void;
+  onMoveLinkEdge: (edgeId: string, sourceId: string, targetId: string) => void;
   onRemoveLinkEdge: (edgeId: string) => void;
   onSave: () => void;
   onNodesChange: OnNodesChange<DeviceFlowNode>;
@@ -953,7 +985,7 @@ function TopologyEditor({
     onlineValue: "1",
     offlineValue: "2",
     advancedMode: false,
-    customIconId: "" as string
+    customIconId: "" as string,
   });
   const [activeTool, setActiveTool] = useState<EditorTool>("select");
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
@@ -1000,10 +1032,7 @@ function TopologyEditor({
     }
     return `${host.visibleName} ${host.hostName}`.toLowerCase().includes(search);
   });
-  const linkReady = Boolean(
-    (selectedEdge || (linkDraft.sourceId && linkDraft.targetId)) &&
-    linkForm.sourceOutInterface
-  );
+  const linkReady = Boolean(selectedEdge || (linkDraft.sourceId && linkDraft.targetId));
 
   useEffect(() => {
     void apiGet<ZabbixServerConfig[]>("/api/server/zabbix").then(setZabbixServers).catch(() => setZabbixServers([]));
@@ -1268,7 +1297,7 @@ function TopologyEditor({
       onlineValue: node.data.onlineValue ?? "1",
       offlineValue: node.data.offlineValue ?? "2",
       advancedMode: node.data.advancedMode ?? false,
-      customIconId: node.data.customIconId ?? ""
+      customIconId: node.data.customIconId ?? "",
     });
   }
 
@@ -1300,7 +1329,7 @@ function TopologyEditor({
       offlineValue: deviceForm.offlineValue || "2",
       advancedMode: deviceForm.advancedMode,
       customIconId: selectedIcon?.id,
-      customIconUrl: selectedIcon?.dataUrl
+      customIconUrl: selectedIcon?.dataUrl,
     });
     closeDeviceConfig();
   }
@@ -1779,14 +1808,47 @@ function TopologyEditor({
                 <Link2 size={16} />
                 <span>Conexao</span>
               </div>
-              <div className="two-col-fields">
+              <div className="endpoint-select-row">
                 <label>
                   Origem
-                  <input value={`${zabbixServerName(draftSourceNode?.data.zabbixServerId)} › ${draftSourceNode?.data.label ?? ""}`} readOnly />
+                  <select
+                    value={selectedEdge?.source ?? linkDraft.sourceId ?? ""}
+                    onChange={(e) => {
+                      const newSourceId = e.target.value;
+                      const otherNodeId = newSourceId === (selectedEdge?.source ?? linkDraft.sourceId)
+                        ? (selectedEdge?.target ?? linkDraft.targetId)
+                        : (selectedEdge?.source ?? linkDraft.sourceId);
+                      if (selectedEdgeId && selectedEdge) {
+                        onMoveLinkEdge(selectedEdgeId, newSourceId, otherNodeId ?? selectedEdge.target);
+                      } else {
+                        setLinkDraft({ sourceId: newSourceId, targetId: otherNodeId ?? linkDraft.targetId });
+                      }
+                      setLinkForm((f) => ({ ...f, sourceOutInterface: "" }));
+                    }}
+                  >
+                    {[draftSourceNode, draftTargetNode].filter(Boolean).map((n) => (
+                      <option key={n!.id} value={n!.id}>{n!.data.label}</option>
+                    ))}
+                  </select>
                 </label>
+                <button
+                  type="button"
+                  className="swap-endpoints-btn"
+                  title="Trocar origem e destino"
+                  onClick={() => {
+                    if (selectedEdgeId && selectedEdge) {
+                      onMoveLinkEdge(selectedEdgeId, selectedEdge.target, selectedEdge.source);
+                    } else if (linkDraft.sourceId || linkDraft.targetId) {
+                      setLinkDraft({ sourceId: linkDraft.targetId, targetId: linkDraft.sourceId });
+                    }
+                    setLinkForm((f) => ({ ...f, sourceOutInterface: "" }));
+                  }}
+                >
+                  ⇄
+                </button>
                 <label>
                   Destino
-                  <input value={`${zabbixServerName(draftTargetNode?.data.zabbixServerId)} › ${draftTargetNode?.data.label ?? ""}`} readOnly />
+                  <input value={draftTargetNode?.data.label ?? ""} readOnly />
                 </label>
               </div>
               <label>
@@ -2603,6 +2665,7 @@ function TopologyCanvas({
           onPaneClick={onPaneClick}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          connectionRadius={10}
           nodesDraggable={!readonly && (nodesDraggable ?? true)}
           nodesConnectable={!readonly}
           elementsSelectable={!readonly}
@@ -2683,7 +2746,8 @@ function toFlowNode(hosts: DeviceSnapshot[], icons: CustomIcon[]) {
       advancedMode: node.advancedMode,
       customIconId: node.customIconId,
       customIconUrl: node.customIconId ? byIconId.get(node.customIconId) : undefined,
-      snapshot: node.hostId ? byHost.get(node.hostId) : undefined
+      snapshot: node.hostId ? byHost.get(node.hostId) : undefined,
+      handles: node.handles
     }
   });
 }
@@ -2706,7 +2770,8 @@ function fromFlowNode(node: DeviceFlowNode): Topology["nodes"][number] {
     onlineValue: node.data.onlineValue,
     offlineValue: node.data.offlineValue,
     advancedMode: node.data.advancedMode,
-    customIconId: node.data.customIconId
+    customIconId: node.data.customIconId,
+    handles: node.data.handles
   };
 }
 
@@ -2741,7 +2806,9 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       lineStyle: edge.lineStyle,
       badgeFontSize: edge.badgeFontSize,
       showTraffic: edge.showTraffic,
-      showLabel: edge.showLabel
+      showLabel: edge.showLabel,
+      waypointDX: edge.waypointDX,
+      waypointDY: edge.waypointDY
     }
   });
 }
@@ -2777,7 +2844,9 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     lineStyle: data?.lineStyle,
     badgeFontSize: data?.badgeFontSize,
     showTraffic: data?.showTraffic,
-    showLabel: data?.showLabel
+    showLabel: data?.showLabel,
+    waypointDX: data?.waypointDX,
+    waypointDY: data?.waypointDY
   };
 }
 
@@ -2798,7 +2867,7 @@ function buildLinkEdge(edge: Pick<Edge, "id" | "source" | "target"> & { label?: 
     label: undefined,
     data,
     animated: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: data.color },
+    markerEnd: undefined,
     style: {
       stroke: data.color,
       strokeWidth: data.strokeWidth,

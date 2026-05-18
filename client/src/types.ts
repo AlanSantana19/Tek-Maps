@@ -67,6 +67,7 @@ export interface Topology {
     offlineValue?: string;
     advancedMode?: boolean;
     customIconId?: string;
+    handles?: string[];
   }>;
   edges: Array<{
     id: string;
@@ -98,6 +99,8 @@ export interface Topology {
     badgeFontSize?: number;
     showTraffic?: boolean;
     showLabel?: boolean;
+    waypointDX?: number;
+    waypointDY?: number;
   }>;
 }
 

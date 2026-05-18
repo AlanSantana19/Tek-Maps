@@ -1,4 +1,4 @@
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, useReactFlow } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
 import { createContext, useContext } from "react";
 import type { DeviceSnapshot } from "../types";
@@ -30,19 +30,20 @@ export type LinkEdgePayload = {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
+  waypointDX?: number;
+  waypointDY?: number;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
 
-
 export function LinkEdge({
   id,
+  source: _source,
+  target: _target,
   sourceX,
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
   data: rawData,
   style,
   markerEnd,
@@ -50,15 +51,20 @@ export function LinkEdge({
 }: EdgeProps) {
   const data = rawData as LinkEdgePayload | undefined;
   const snapshots = useContext(SnapshotsContext);
+  const { setEdges, screenToFlowPosition } = useReactFlow();
 
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  const waypointDX = data?.waypointDX ?? 0;
+  const waypointDY = data?.waypointDY ?? 0;
+
+  // Midpoint + user offset
+  const wpX = (sourceX + targetX) / 2 + waypointDX;
+  const wpY = (sourceY + targetY) / 2 + waypointDY;
+
+  // Quadratic bezier control point so the curve passes through wpX/wpY at t=0.5
+  const cpX = 2 * wpX - 0.5 * sourceX - 0.5 * targetX;
+  const cpY = 2 * wpY - 0.5 * sourceY - 0.5 * targetY;
+
+  const edgePath = `M ${sourceX} ${sourceY} Q ${cpX} ${cpY} ${targetX} ${targetY}`;
 
   const configuredColor = data?.color ?? "#9ca3af";
   const strokeWidth     = data?.strokeWidth ?? 2;
@@ -71,7 +77,7 @@ export function LinkEdge({
 
   const sourceSnapshot = data?.sourceHostId ? snapshots.get(data.sourceHostId) : undefined;
   const sourcePort = data?.sourceOutInterface
-    ? sourceSnapshot?.ports.find((p) => p.id === data.sourceOutInterface)
+    ? sourceSnapshot?.ports.find((p) => p.id === data!.sourceOutInterface)
     : undefined;
 
   const txBps = sourcePort?.outBps ?? 0;
@@ -103,7 +109,6 @@ export function LinkEdge({
   };
 
   const pulsePathId = `pulse-path-${id}`;
-
   const badgeW = 76;
 
   const tooltipText = [
@@ -113,6 +118,45 @@ export function LinkEdge({
     `TX: ${formatBps(txBps)}`,
     `RX: ${formatBps(rxBps)}`,
   ].filter(Boolean).join("\n");
+
+  function startWaypointDrag(e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const onMove = (ev: MouseEvent) => {
+      const flowPos = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+      const newDX = flowPos.x - (sourceX + targetX) / 2;
+      const newDY = flowPos.y - (sourceY + targetY) / 2;
+      setEdges((edges) =>
+        edges.map((edge) =>
+          edge.id === id
+            ? { ...edge, data: { ...(edge.data as object), waypointDX: newDX, waypointDY: newDY } }
+            : edge
+        )
+      );
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function resetWaypoint(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEdges((edges) =>
+      edges.map((edge) =>
+        edge.id === id
+          ? { ...edge, data: { ...(edge.data as object), waypointDX: 0, waypointDY: 0 } }
+          : edge
+      )
+    );
+  }
+
+  const showWaypointHandle = selected || waypointDX !== 0 || waypointDY !== 0;
 
   return (
     <>
@@ -148,15 +192,38 @@ export function LinkEdge({
         </g>
       ) : null}
 
-      {/* TX/RX badge — EdgeLabelRenderer renders in HTML space, tracks cable at any zoom/pan/drag */}
-      {showTraffic && hasInterfaces ? (
-        <EdgeLabelRenderer>
+      <EdgeLabelRenderer>
+        {/* Draggable waypoint handle — shown when edge is selected or already offset */}
+        {showWaypointHandle ? (
+          <div
+            className="nodrag nopan edge-waypoint-handle"
+            onMouseDown={startWaypointDrag}
+            onDoubleClick={resetWaypoint}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${wpX}px, ${wpY}px)`,
+              width: 14,
+              height: 14,
+              borderRadius: "50%",
+              background: "#1e293b",
+              border: "2px solid #60a5fa",
+              cursor: "grab",
+              pointerEvents: "all",
+              boxShadow: "0 0 6px rgba(96,165,250,0.5)",
+              zIndex: 10,
+            }}
+            title="Arraste para curvar o cabo. Duplo clique para resetar."
+          />
+        ) : null}
+
+        {/* TX/RX badge */}
+        {showTraffic && hasInterfaces ? (
           <div
             className="nodrag nopan"
             title={tooltipText}
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              transform: `translate(-50%, -50%) translate(${wpX}px, ${wpY}px)`,
               pointerEvents: "all",
               cursor: "default",
               background: isDown ? "#1a0808" : "#0c0f14",
@@ -192,8 +259,8 @@ export function LinkEdge({
               </>
             )}
           </div>
-        </EdgeLabelRenderer>
-      ) : null}
+        ) : null}
+      </EdgeLabelRenderer>
     </>
   );
 }

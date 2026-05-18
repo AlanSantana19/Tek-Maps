@@ -903,6 +903,35 @@ select {
   align-items: end;
 }
 
+.endpoint-select-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: end;
+}
+
+.swap-endpoints-btn {
+  height: 32px;
+  padding: 0 8px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  align-self: end;
+  margin-bottom: 2px;
+}
+
+.swap-endpoints-btn:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
 /* Cable type selector */
 .cable-type-selector {
   display: flex;
@@ -986,6 +1015,16 @@ select {
   align-items: flex-start;
   gap: 10px !important;
 }
+
+.element-field-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  margin-top: 4px;
+}
+
 
 .element-checkbox input {
   width: auto;
@@ -1901,6 +1940,18 @@ select {
   background: #050607;
   color: #e7eef2;
 }
+
+.device-node .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  min-width: 1px;
+  min-height: 1px;
+  border: none;
+  background: transparent;
+}
+
 
 .react-flow__controls-button,
 .react-flow__minimap {

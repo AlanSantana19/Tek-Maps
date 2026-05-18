@@ -16,8 +16,20 @@ interface DeviceNodeProps {
     offlineValue?: string;
     customIconUrl?: string;
     snapshot?: DeviceSnapshot;
+    handles?: string[];
   };
 }
+
+const INVISIBLE_HANDLE: CSSProperties = {
+  opacity: 0,
+  pointerEvents: "none",
+  width: 1,
+  height: 1,
+  minWidth: 1,
+  minHeight: 1,
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+};
 
 export function DeviceNode({ data }: DeviceNodeProps) {
   const snapshot = data.snapshot;
@@ -26,11 +38,20 @@ export function DeviceNode({ data }: DeviceNodeProps) {
   const labelPosition = data.labelPosition ?? "below";
   const showBackground = data.showBackground ?? true;
   const status = statusFor(data, snapshot);
-  const style = { "--node-icon-size": `${Math.max(16, Math.min(iconSize, 128))}px` } as CSSProperties;
+  const clampedSize = Math.max(16, Math.min(iconSize, 128));
+  const style = { "--node-icon-size": `${clampedSize}px` } as CSSProperties;
+
+  // Center handles on the icon regardless of label position.
+  const iconCenterTop = labelPosition === "above"
+    ? `calc(100% - ${clampedSize / 2}px)`
+    : `${clampedSize / 2}px`;
+
+  const handleStyle: CSSProperties = { ...INVISIBLE_HANDLE, top: iconCenterTop };
 
   return (
     <div className={`device-node topology-symbol ${status} ${showBackground ? "" : "no-background"} label-${labelPosition}`} style={style}>
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={Position.Left} id="center" style={handleStyle} />
+      <Handle type="source" position={Position.Right} id="center" style={handleStyle} />
       <div className={`topology-icon-wrap ${shapeFor(data.deviceType)} ${data.customIconUrl ? "" : iconToneFor(data.deviceType)}`}>
         {data.customIconUrl
           ? <img src={data.customIconUrl} alt={data.label} className="custom-icon-img" />
@@ -40,7 +61,6 @@ export function DeviceNode({ data }: DeviceNodeProps) {
       <div className="topology-label" style={{ fontSize: `${labelFontSize}px` }}>
         <strong>{data.label}</strong>
       </div>
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

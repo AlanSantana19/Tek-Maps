@@ -62,6 +62,7 @@ export interface TopologyNode {
   onlineValue?: string;
   offlineValue?: string;
   advancedMode?: boolean;
+  handles?: string[];
 }
 
 export interface TopologyEdge {
@@ -94,6 +95,8 @@ export interface TopologyEdge {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
+  waypointDX?: number;
+  waypointDY?: number;
 }
 
 export interface Topology {
