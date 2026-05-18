@@ -45,7 +45,37 @@ const DEFAULT_LOGIN_LOGO_CONFIG: LoginLogoConfig = {
 };
 
 export class SettingsRepository {
-  constructor(private readonly db: pg.Pool) {}
+  private readonly encKey: Buffer;
+
+  constructor(private readonly db: pg.Pool, jwtSecret: string) {
+    // Derive a fixed 32-byte key from the JWT secret via SHA-256
+    this.encKey = crypto.createHash("sha256").update(jwtSecret).digest();
+  }
+
+  private encryptPassword(plain: string): string {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv("aes-256-gcm", this.encKey, iv);
+    const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `enc:v1:${iv.toString("hex")}:${tag.toString("hex")}:${ct.toString("hex")}`;
+  }
+
+  private decryptPassword(stored: string | undefined): string | undefined {
+    if (!stored) return undefined;
+    if (!stored.startsWith("enc:v1:")) return stored; // legacy plaintext — transparently pass through
+    const parts = stored.split(":");
+    if (parts.length !== 5) return undefined;
+    try {
+      const iv  = Buffer.from(parts[2], "hex");
+      const tag = Buffer.from(parts[3], "hex");
+      const ct  = Buffer.from(parts[4], "hex");
+      const decipher = crypto.createDecipheriv("aes-256-gcm", this.encKey, iv);
+      decipher.setAuthTag(tag);
+      return decipher.update(ct).toString("utf8") + decipher.final("utf8");
+    } catch {
+      return undefined;
+    }
+  }
 
   async listZabbixServers(): Promise<StoredZabbixConfig[]> {
     const result = await this.db.query(
@@ -53,7 +83,10 @@ export class SettingsRepository {
        FROM zabbix_servers
        ORDER BY created_at ASC`
     );
-    return result.rows.map(mapZabbixServer);
+    return result.rows.map((row) => {
+      const mapped = mapZabbixServer(row);
+      return { ...mapped, password: this.decryptPassword(mapped.password) };
+    });
   }
 
   async getZabbixServer(id: string): Promise<StoredZabbixConfig | null> {
@@ -63,17 +96,22 @@ export class SettingsRepository {
        WHERE id = $1`,
       [id]
     );
-    return result.rows[0] ? mapZabbixServer(result.rows[0]) : null;
+    if (!result.rows[0]) return null;
+    const mapped = mapZabbixServer(result.rows[0]);
+    return { ...mapped, password: this.decryptPassword(mapped.password) };
   }
 
   async saveZabbixServer(config: StoredZabbixConfig): Promise<StoredZabbixConfig> {
     const id = config.id ?? crypto.randomUUID();
+    // current?.password is already decrypted (from getZabbixServer)
     const current = config.id ? await this.getZabbixServer(config.id) : null;
+    const plainPassword = config.password || current?.password;
+    const storedPassword = plainPassword ? this.encryptPassword(plainPassword) : undefined;
     const value = {
       name: config.name?.trim() || config.url,
       url: config.url,
       user: config.user,
-      password: config.password || current?.password,
+      password: storedPassword,
       active: config.active ?? true
     };
 
@@ -91,7 +129,8 @@ export class SettingsRepository {
       [id, value.name, value.url, value.user, value.password, value.active]
     );
 
-    return mapZabbixServer(result.rows[0]);
+    const mapped = mapZabbixServer(result.rows[0]);
+    return { ...mapped, password: this.decryptPassword(mapped.password) };
   }
 
   async removeZabbixServer(id: string): Promise<boolean> {

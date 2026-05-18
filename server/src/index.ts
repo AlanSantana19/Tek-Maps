@@ -27,7 +27,7 @@ app.use(pinoHttp({ logger }));
 
 const topologyRepository = new TopologyRepository(pool);
 const cacheRepository = new ZabbixCacheRepository(pool);
-const settingsRepository = new SettingsRepository(pool);
+const settingsRepository = new SettingsRepository(pool, config.JWT_SECRET);
 const accessUserRepository = new AccessUserRepository(pool);
 const accessGroupRepository = new AccessGroupRepository(pool);
 const customIconRepository = new CustomIconRepository(pool);
