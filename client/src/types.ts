@@ -267,6 +267,7 @@ export interface CurrentUserPermissions {
 
 export interface LoginLogoConfig {
   dataUrl?: string;
+  title?: string;
   width: number;
   offsetX: number;
   offsetY: number;
@@ -277,6 +278,7 @@ export interface LoginLogoConfig {
 
 export interface NavLogoConfig {
   dataUrl?: string;
+  title?: string;
   width: number;
   updatedAt?: string;
 }

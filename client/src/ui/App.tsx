@@ -700,9 +700,10 @@ export function App() {
         <main className="login-screen">
           <form className="login-panel" onSubmit={handleTotpLogin} style={{ background: loginLogoConfig.backgroundColor }}>
             <LoginLogoPreview config={loginLogoConfig} />
-            <h1 style={{ color: loginLogoConfig.titleColor }}>Tek Map</h1>
+            <h1 style={{ color: loginLogoConfig.titleColor }}>{loginLogoConfig.title || "Tek Map"}</h1>
             <p className="login-totp-hint">Digite o codigo de 6 digitos do Google Authenticator.</p>
             <input
+              className="totp-code-input"
               type="text"
               inputMode="numeric"
               pattern="[0-9 ]*"
@@ -726,7 +727,7 @@ export function App() {
       <main className="login-screen">
         <form className="login-panel" onSubmit={handleLogin} style={{ background: loginLogoConfig.backgroundColor }}>
           <LoginLogoPreview config={loginLogoConfig} />
-          <h1 style={{ color: loginLogoConfig.titleColor }}>Tek Map</h1>
+          <h1 style={{ color: loginLogoConfig.titleColor }}>{loginLogoConfig.title || "Tek Map"}</h1>
           <input
             type="text"
             placeholder="Usuario ou email"
@@ -770,7 +771,7 @@ export function App() {
             <>
               <Activity size={24} />
               <div className="brand-text">
-                <strong>Tek Map</strong>
+                <strong>{navLogoConfig.title || "Tek Map"}</strong>
                 <span>{hosts.length} hosts sincronizados</span>
                 <small>{appVersion ? `v${appVersion.version} · ${appVersion.build}` : ""}</small>
               </div>
@@ -1068,6 +1069,10 @@ function BrandingPanel({
                   <span className="range-value">{loginDraft.width}px</span>
                 </div>
               </label>
+              <label>
+                Titulo
+                <input type="text" maxLength={60} placeholder="Tek Map" value={loginDraft.title ?? ""} onChange={(event) => setLoginDraft({ ...loginDraft, title: event.target.value })} />
+              </label>
               <div className="two-col-fields">
                 <label>
                   Posicao X
@@ -1110,7 +1115,7 @@ function BrandingPanel({
               <div className="login-preview-screen">
                 <div className="login-panel preview" style={{ background: loginDraft.backgroundColor }}>
                   <LoginLogoPreview config={loginDraft} />
-                  <h1 style={{ color: loginDraft.titleColor }}>Tek Map</h1>
+                  <h1 style={{ color: loginDraft.titleColor }}>{loginDraft.title || "Tek Map"}</h1>
                   <input disabled placeholder="Usuario ou email" />
                   <input disabled placeholder="Senha" />
                   <button type="button">Entrar</button>
@@ -1149,6 +1154,10 @@ function BrandingPanel({
                 />
               </div>
               <label>
+                Titulo
+                <input type="text" maxLength={60} placeholder="Tek Map" value={navDraft.title ?? ""} onChange={(event) => setNavDraft({ ...navDraft, title: event.target.value })} />
+              </label>
+              <label>
                 Tamanho
                 <div className="range-row">
                   <input type="range" min={40} max={200} value={navDraft.width} onChange={(event) => setNavDraft({ ...navDraft, width: Number(event.target.value) })} />
@@ -1175,7 +1184,7 @@ function BrandingPanel({
                   ) : (
                     <div className="nav-logo-preview-default">
                       <Activity size={20} />
-                      <span>Tek Map</span>
+                      <span>{navDraft.title || "Tek Map"}</span>
                     </div>
                   )}
                 </div>

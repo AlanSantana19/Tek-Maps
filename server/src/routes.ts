@@ -143,6 +143,7 @@ const groupGranularPermissionUpdateSchema = granularPermissionUpdateSchema;
 
 const loginLogoConfigSchema = z.object({
   dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional(),
+  title: z.string().max(60).optional(),
   width: z.number().min(48).max(240),
   offsetX: z.number().min(-120).max(120),
   offsetY: z.number().min(-80).max(80),
@@ -152,6 +153,7 @@ const loginLogoConfigSchema = z.object({
 
 const navLogoConfigSchema = z.object({
   dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional(),
+  title: z.string().max(60).optional(),
   width: z.number().min(40).max(240)
 });
 
