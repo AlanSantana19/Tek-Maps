@@ -2168,8 +2168,9 @@ select {
 }
 
 .favicon-thumb {
-  max-height: 64px;
-  max-width: 64px;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
   image-rendering: pixelated;
 }
 
@@ -2199,6 +2200,7 @@ select {
 .favicon-preview-tab img {
   display: block;
   flex-shrink: 0;
+  object-fit: contain;
   image-rendering: pixelated;
 }
 
