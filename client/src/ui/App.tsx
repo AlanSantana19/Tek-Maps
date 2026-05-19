@@ -829,7 +829,7 @@ export function App() {
 
       <section className="content-shell">
         {activeSection === "dashboard" ? (
-          <Dashboard hosts={hosts} nodesCount={nodes.length} edgesCount={edges.length} alertsCount={alertsCount} downHosts={downHosts} />
+          <Dashboard hosts={hosts} nodesCount={nodes.length} edgesCount={edges.length} alertsCount={alertsCount} downHosts={downHosts} mapsCount={topologies.length} />
         ) : null}
 
         {activeSection === "editor" && editorMode === "maps" ? (
@@ -1256,13 +1256,15 @@ function Dashboard({
   nodesCount,
   edgesCount,
   alertsCount,
-  downHosts
+  downHosts,
+  mapsCount
 }: {
   hosts: DeviceSnapshot[];
   nodesCount: number;
   edgesCount: number;
   alertsCount: number;
   downHosts: number;
+  mapsCount: number;
 }) {
   const syncTimes = hosts.map((host) => host.syncedAt).sort();
   const latestSync = syncTimes[syncTimes.length - 1];
@@ -1282,6 +1284,7 @@ function Dashboard({
     <section className="page">
       <PageHeader title="Dashboard" subtitle="Resumo operacional da topologia e dos hosts monitorados." />
       <div className="summary-grid">
+        <SummaryCard label="Mapas" value={mapsCount} />
         <SummaryCard label="Hosts" value={hosts.length} />
         <SummaryCard label="Dispositivos no mapa" value={nodesCount} />
         <SummaryCard label="Links" value={edgesCount} />
