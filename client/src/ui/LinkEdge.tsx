@@ -69,21 +69,21 @@ export function LinkEdge({
   const waypointDY = data?.waypointDY ?? 0;
 
   // ── Path & badge position ──────────────────────────────────────────────────
-  // "straight"  → straight line.
-  // "malleable" and legacy (undefined) → orthogonal Z-path (3 right-angle segments).
-  //   waypointDX shifts the vertical fold left/right from the midpoint.
+  // "malleable" → orthogonal Z-path (3 right-angle segments).
+  // "straight" or undefined (legacy) → straight line.
+  //   waypointDX shifts the vertical fold left/right from the midpoint (malleable only).
   let edgePath: string;
   let badgeX: number;
   let badgeY: number;
 
-  if (routing === "straight") {
-    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    badgeX = (sourceX + targetX) / 2;
-    badgeY = (sourceY + targetY) / 2;
-  } else {
+  if (routing === "malleable") {
     const foldX = (sourceX + targetX) / 2 + waypointDX;
     edgePath = `M ${sourceX} ${sourceY} L ${foldX} ${sourceY} L ${foldX} ${targetY} L ${targetX} ${targetY}`;
     badgeX = foldX;
+    badgeY = (sourceY + targetY) / 2;
+  } else {
+    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+    badgeX = (sourceX + targetX) / 2;
     badgeY = (sourceY + targetY) / 2;
   }
 
@@ -129,7 +129,7 @@ export function LinkEdge({
 
   const hasSignalData  = showSignal && (!!signalTxItem || !!signalRxItem);
   const showBadge      = showTraffic && hasInterfaces;
-  const isMaleavel     = routing === "malleable" || (routing === undefined && (waypointDX !== 0 || waypointDY !== 0));
+  const isMaleavel     = routing === "malleable";
   const tracadoLabel   = isMaleavel ? "Maleável/Dobrável" : "Reto";
   const cableTypeLabel = (data?.showLabel ?? true) && data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
 
@@ -179,7 +179,7 @@ export function LinkEdge({
   }
 
   // Show the drag handle for bendable cables when selected or already bent
-  const showHandle = routing !== "straight" && (selected || waypointDX !== 0 || waypointDY !== 0);
+  const showHandle = routing === "malleable" && (selected || waypointDX !== 0 || waypointDY !== 0);
 
   function handleBadgeMouseEnter(e: React.MouseEvent) {
     setHovered(true);
