@@ -1357,7 +1357,7 @@ function EditorMaps({
   onOpenTopology: (topology: Topology & { id: string }) => void;
 }) {
   const [servers, setServers] = useState<ZabbixServerConfig[]>([]);
-  const [form, setForm] = useState({ name: "", zabbixServerId: "" });
+  const [form, setForm] = useState({ name: "", topologyType: "" as "" | "isp" | "corporate", zabbixServerId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [savingMap, setSavingMap] = useState(false);
@@ -1387,6 +1387,7 @@ function EditorMaps({
       const saved = await saveTopology({
         id: editingId ?? undefined,
         name: form.name.trim(),
+        topologyType: form.topologyType || undefined,
         zabbixServerId: form.zabbixServerId,
         nodes: current?.nodes ?? [],
         edges: current?.edges ?? []
@@ -1395,7 +1396,7 @@ function EditorMaps({
         ? topologies.map((topology) => topology.id === saved.id ? saved : topology)
         : [saved, ...topologies]);
       setEditingId(null);
-      setForm({ name: "", zabbixServerId: "" });
+      setForm({ name: "", topologyType: "", zabbixServerId: "" });
       setStatus(editingId ? "Mapa atualizado." : "Mapa salvo. Use Abrir para editar a topologia.");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Falha ao salvar mapa.");
@@ -1406,7 +1407,7 @@ function EditorMaps({
 
   function editMap(topology: Topology & { id: string }) {
     setEditingId(topology.id);
-    setForm({ name: topology.name, zabbixServerId: topology.zabbixServerId ?? "" });
+    setForm({ name: topology.name, topologyType: topology.topologyType ?? "", zabbixServerId: topology.zabbixServerId ?? "" });
     setStatus(null);
   }
 
@@ -1422,7 +1423,7 @@ function EditorMaps({
       onTopologiesChange(topologies.filter((item) => item.id !== topology.id));
       if (editingId === topology.id) {
         setEditingId(null);
-        setForm({ name: "", zabbixServerId: "" });
+        setForm({ name: "", topologyType: "", zabbixServerId: "" });
       }
       setStatus("Mapa removido.");
     } catch (err) {
@@ -1455,11 +1456,19 @@ function EditorMaps({
             Identificacao do mapa
             <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Mapa matriz" />
           </label>
+          <label>
+            Tipo de topologia
+            <select value={form.topologyType} onChange={(event) => setForm({ ...form, topologyType: event.target.value as "" | "isp" | "corporate" })}>
+              <option value="">Nao especificado</option>
+              <option value="isp">ISP</option>
+              <option value="corporate">Corporativo</option>
+            </select>
+          </label>
           <div className="action-row">
             {editingId ? (
               <button className="secondary-button" type="button" onClick={() => {
                 setEditingId(null);
-                setForm({ name: "", zabbixServerId: "" });
+                setForm({ name: "", topologyType: "", zabbixServerId: "" });
               }}>
                 Cancelar
               </button>
@@ -1483,7 +1492,14 @@ function EditorMaps({
               {topologies.map((topology) => (
                 <div className="map-row map-row-clickable" key={topology.id} onClick={() => onOpenTopology(topology)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpenTopology(topology)}>
                   <div>
-                    <strong>{topology.name}</strong>
+                    <div className="map-row-title">
+                      <strong>{topology.name}</strong>
+                      {topology.topologyType ? (
+                        <span className={`topology-type-badge topology-type-badge--${topology.topologyType}`}>
+                          {topology.topologyType === "isp" ? "ISP" : "Corporativo"}
+                        </span>
+                      ) : null}
+                    </div>
                     <span>{serverName(topology.zabbixServerId)}</span>
                     <small>{topology.nodes.length} dispositivos - {topology.edges.length} links</small>
                   </div>

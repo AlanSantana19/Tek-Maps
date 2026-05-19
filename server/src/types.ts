@@ -107,6 +107,7 @@ export interface TopologyEdge {
 export interface Topology {
   id: string;
   name: string;
+  topologyType?: "isp" | "corporate";
   zabbixServerId?: string;
   nodes: TopologyNode[];
   edges: TopologyEdge[];

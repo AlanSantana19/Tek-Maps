@@ -2548,6 +2548,34 @@ select {
   display: block;
 }
 
+.map-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topology-type-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.topology-type-badge--isp {
+  background: #1e3a5f;
+  color: #60a5fa;
+  border: 1px solid #2563eb55;
+}
+
+.topology-type-badge--corporate {
+  background: #1a3a2a;
+  color: #4ade80;
+  border: 1px solid #16a34a55;
+}
+
 .empty-create-button {
   width: 100%;
   min-height: 180px;

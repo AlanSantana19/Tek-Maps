@@ -48,6 +48,7 @@ export interface DeviceSnapshot {
 export interface Topology {
   id?: string;
   name: string;
+  topologyType?: "isp" | "corporate";
   zabbixServerId?: string;
   nodes: Array<{
     id: string;

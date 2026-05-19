@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS access_users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE topologies ADD COLUMN IF NOT EXISTS topology_type TEXT CHECK (topology_type IN ('isp', 'corporate'));
+
 ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
 ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT[] NOT NULL DEFAULT '{}';

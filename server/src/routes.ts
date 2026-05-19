@@ -19,6 +19,7 @@ import { ZabbixClient } from "./zabbix/ZabbixClient.js";
 const topologySchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1).max(120),
+  topologyType: z.enum(["isp", "corporate"]).optional(),
   zabbixServerId: z.string().uuid().optional(),
   nodes: z.array(z.object({
     id: z.string(),
