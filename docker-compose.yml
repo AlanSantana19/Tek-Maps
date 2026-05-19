@@ -29,7 +29,7 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://tekmap:tekmap@postgres:5432/tekmap
       JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://sygtek.com.br:9000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
       ZABBIX_URL: ${ZABBIX_URL:-https://zabbix.example.com/api_jsonrpc.php}
       ZABBIX_USER: ${ZABBIX_USER:-api-user}
       ZABBIX_PASSWORD: ${ZABBIX_PASSWORD:-api-password}
