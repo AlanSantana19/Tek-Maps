@@ -49,6 +49,7 @@ import {
   setupTotp,
   enableTotp,
   disableTotp,
+  resetUserTotp,
   addGroupMember,
   apiGet,
   createAccessGroup,
@@ -3356,6 +3357,21 @@ function AdminUsersTab() {
     }
   }
 
+  async function handleResetTotp(user: AccessUser) {
+    if (!window.confirm(`Desativar o 2FA de ${user.name}?`)) return;
+    setStatus(null);
+    setBusyUserId(user.id);
+    try {
+      await resetUserTotp(user.id);
+      setUsers((current) => current.map((u) => u.id === user.id ? { ...u, totpEnabled: false } : u));
+      setStatus("2FA desativado.");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao desativar 2FA.");
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
   return (
     <div className="admin-layout">
       <form className="panel form-grid" onSubmit={handleSubmit}>
@@ -3410,6 +3426,7 @@ function AdminUsersTab() {
               </div>
               <span className="role-pill">{user.role}</span>
               <span className={`state-pill ${user.active ? "active" : ""}`}>{user.active ? "Ativo" : "Inativo"}</span>
+              <span className={`state-pill ${user.totpEnabled ? "active" : ""}`} title="Autenticacao em dois fatores">2FA {user.totpEnabled ? "Ativo" : "Inativo"}</span>
               <div className="row-actions">
                 <button
                   className="icon-action-button"
@@ -3431,6 +3448,18 @@ function AdminUsersTab() {
                 >
                   <KeyRound size={18} />
                 </button>
+                {user.totpEnabled && (
+                  <button
+                    className="icon-action-button"
+                    type="button"
+                    onClick={() => handleResetTotp(user)}
+                    disabled={busyUserId === user.id}
+                    aria-label={`Desativar 2FA de ${user.name}`}
+                    title="Desativar 2FA"
+                  >
+                    <Shield size={18} />
+                  </button>
+                )}
                 <button
                   className="icon-action-button danger"
                   type="button"

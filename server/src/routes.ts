@@ -749,6 +749,15 @@ export function createRoutes(
     }
   });
 
+  router.delete("/admin/users/:id/totp", async (req, res, next) => {
+    try {
+      await users.disableTotp(req.params.id);
+      res.json({ enabled: false });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/admin/groups", async (_req, res, next) => {
     try {
       res.json(await groups.list());

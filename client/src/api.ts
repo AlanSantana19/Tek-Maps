@@ -180,6 +180,10 @@ export async function removeAccessUser(id: string) {
   return apiDelete(`/api/admin/users/${id}`);
 }
 
+export async function resetUserTotp(id: string): Promise<void> {
+  return apiDelete(`/api/admin/users/${id}/totp`);
+}
+
 export async function resetAccessUserPassword(id: string, password: string) {
   return apiSend<AccessUser>(`/api/admin/users/${id}/password`, "PATCH", { password });
 }

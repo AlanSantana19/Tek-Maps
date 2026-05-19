@@ -174,6 +174,7 @@ export interface AccessUser {
   email: string;
   role: "admin" | "operator" | "viewer";
   active: boolean;
+  totpEnabled?: boolean;
   createdAt?: string;
 }
 
