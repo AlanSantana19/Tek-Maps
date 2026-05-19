@@ -5,6 +5,7 @@ import type { DeviceSnapshot } from "../types.js";
 
 interface OnlineUser {
   email: string;
+  ip: string;
   connectedAt: string;
 }
 
@@ -21,7 +22,11 @@ export class Hub {
       if (token) {
         const payload = verifyToken(token);
         if (payload) {
-          this.onlineUsers.set(ws, { email: payload.sub, connectedAt: new Date().toISOString() });
+          const forwarded = req.headers["x-forwarded-for"];
+          const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0])?.trim()
+            ?? req.socket.remoteAddress
+            ?? "desconhecido";
+          this.onlineUsers.set(ws, { email: payload.sub, ip, connectedAt: new Date().toISOString() });
         }
       }
 

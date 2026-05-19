@@ -299,5 +299,6 @@ export interface ActivityLogEntry {
 
 export interface OnlineUser {
   email: string;
+  ip: string;
   connectedAt: string;
 }

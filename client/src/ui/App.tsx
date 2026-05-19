@@ -1297,6 +1297,7 @@ function Dashboard({
                 <div className="activity-row" key={`${user.email}-${i}`}>
                   <span className="activity-dot online" />
                   <span className="activity-name">{user.email}</span>
+                  <span className="activity-action">{user.ip}</span>
                   <span className="activity-time">desde {new Date(user.connectedAt).toLocaleTimeString()}</span>
                 </div>
               ))
