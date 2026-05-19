@@ -87,6 +87,7 @@ import { DeviceNode } from "./DeviceNode";
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { link: LinkEdge };
+const EMPTY_SNAPSHOTS = new Map<string, DeviceSnapshot>();
 
 type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding";
 
@@ -169,6 +170,8 @@ type LinkEdgeData = {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
+  routing?: "straight" | "malleable";
+  waypoints?: Array<{ x: number; y: number }>;
   waypointDX?: number;
   waypointDY?: number;
   showSignal?: boolean;
@@ -773,6 +776,7 @@ export function App() {
         {activeSection === "editor" && editorMode === "canvas" ? (
           <TopologyEditor
             topologyName={selectedTopology.name}
+            topologyZabbixServerId={selectedTopology.zabbixServerId}
             snapshotsByHost={snapshotsByHost}
             hosts={hosts}
             nodes={nodes}
@@ -1367,6 +1371,7 @@ function EditorMaps({
 
 function TopologyEditor({
   topologyName,
+  topologyZabbixServerId,
   snapshotsByHost,
   hosts,
   nodes,
@@ -1391,6 +1396,7 @@ function TopologyEditor({
   onConnect
 }: {
   topologyName: string;
+  topologyZabbixServerId?: string;
   snapshotsByHost: Map<string, DeviceSnapshot>;
   hosts: DeviceSnapshot[];
   nodes: DeviceFlowNode[];
@@ -1480,6 +1486,7 @@ function TopologyEditor({
     color: "#9ca3af",
     strokeWidth: 2,
     lineStyle: "solid" as LineStyle,
+    routing: "straight" as "straight" | "malleable",
     badgeFontSize: 10,
     showTraffic: true,
     showLabel: true,
@@ -1523,11 +1530,12 @@ function TopologyEditor({
     if (!hostPickerOpen || hostPickerServerId || zabbixServers.length === 0) {
       return;
     }
-    const defaultServer = zabbixServers.find((server) => server.active) ?? zabbixServers[0];
-    if (defaultServer.id) {
+    const lockedServer = topologyZabbixServerId ? zabbixServers.find((s) => s.id === topologyZabbixServerId) : undefined;
+    const defaultServer = lockedServer ?? zabbixServers.find((server) => server.active) ?? zabbixServers[0];
+    if (defaultServer?.id) {
       void loadHostPickerHosts(defaultServer.id);
     }
-  }, [hostPickerOpen, hostPickerServerId, zabbixServers]);
+  }, [hostPickerOpen, hostPickerServerId, zabbixServers, topologyZabbixServerId]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1632,7 +1640,7 @@ function TopologyEditor({
       closeDeviceConfig();
       setLinkDraft((current) => {
         if (!current.sourceId || current.sourceId === node.id) {
-          setLinkForm(defaultLinkForm());
+          setLinkForm((prev) => ({ ...defaultLinkForm(), routing: prev.routing }));
           return { sourceId: node.id };
         }
         const sourceNode = nodes.find((item) => item.id === current.sourceId);
@@ -1663,6 +1671,7 @@ function TopologyEditor({
       color: data?.color ?? "#9ca3af",
       strokeWidth: data?.strokeWidth ?? 2,
       lineStyle: data?.lineStyle ?? "solid",
+      routing: data?.routing ?? "straight",
       badgeFontSize: data?.badgeFontSize ?? 10,
       showTraffic: data?.showTraffic ?? true,
       showLabel: data?.showLabel ?? true,
@@ -1696,6 +1705,11 @@ function TopologyEditor({
       color: linkForm.color,
       strokeWidth: Number(linkForm.strokeWidth) || 2,
       lineStyle: linkForm.lineStyle,
+      routing: linkForm.routing,
+      // When switching to straight: clear any waypoints and legacy offsets
+      ...(linkForm.routing === "straight"
+        ? { waypoints: [] as Array<{ x: number; y: number }>, waypointDX: 0, waypointDY: 0 }
+        : {}),
       badgeFontSize: Number(linkForm.badgeFontSize) || 10,
       showTraffic: linkForm.showTraffic,
       showLabel: linkForm.showLabel,
@@ -1826,7 +1840,7 @@ function TopologyEditor({
       color: node.data.color ?? "#ffffff",
       showBackground: node.data.showBackground ?? true,
       showIp: node.data.showIp ?? false,
-      zabbixServerId: node.data.zabbixServerId ?? "",
+      zabbixServerId: node.data.zabbixServerId ?? topologyZabbixServerId ?? "",
       statusItemKey: node.data.statusItemKey ?? "",
       onlineValue: node.data.onlineValue ?? "1",
       offlineValue: node.data.offlineValue ?? "2",
@@ -1929,9 +1943,25 @@ function TopologyEditor({
                       </button>
                     );
                   })}
-                  <button className={activeTool === "cable" ? "active" : ""} type="button" onClick={() => chooseCreateTool("cable")} role="menuitem">
-                    <Cable size={17} />
-                    <span>Cabo / Enlace</span>
+                  <div className="create-tool-cable-section">
+                    <Cable size={13} />
+                    Cabo / Enlace
+                  </div>
+                  <button
+                    className={`create-tool-cable-btn${activeTool === "cable" && linkForm.routing === "straight" ? " active" : ""}`}
+                    type="button"
+                    onClick={() => { setLinkForm({ ...defaultLinkForm(), routing: "straight" }); chooseCreateTool("cable"); }}
+                    role="menuitem"
+                  >
+                    <span>Cabo Reto</span>
+                  </button>
+                  <button
+                    className={`create-tool-cable-btn${activeTool === "cable" && linkForm.routing === "malleable" ? " active" : ""}`}
+                    type="button"
+                    onClick={() => { setLinkForm({ ...defaultLinkForm(), routing: "malleable" }); chooseCreateTool("cable"); }}
+                    role="menuitem"
+                  >
+                    <span>Cabo Dobrável</span>
                   </button>
                 </div>
               ) : null}
@@ -2025,14 +2055,23 @@ function TopologyEditor({
           <div className="host-picker-controls">
             <label>
               <span>Servidor Zabbix</span>
-              <select value={hostPickerServerId} onChange={(event) => void loadHostPickerHosts(event.target.value)}>
-                <option value="">Selecione o servidor</option>
-                {zabbixServers.map((server) => (
-                  <option key={server.id ?? server.name} value={server.id ?? ""}>
-                    {server.name}
-                  </option>
-                ))}
-              </select>
+              {topologyZabbixServerId ? (
+                <input
+                  readOnly
+                  value={zabbixServers.find((s) => s.id === topologyZabbixServerId)?.name ?? topologyZabbixServerId}
+                  className="server-locked-input"
+                  title="Servidor fixado pelo mapa"
+                />
+              ) : (
+                <select value={hostPickerServerId} onChange={(event) => void loadHostPickerHosts(event.target.value)}>
+                  <option value="">Selecione o servidor</option>
+                  {zabbixServers.map((server) => (
+                    <option key={server.id ?? server.name} value={server.id ?? ""}>
+                      {server.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </label>
             <label>
               <span>Pesquisar host</span>
@@ -2245,12 +2284,21 @@ function TopologyEditor({
                 </div>
                 <label>
                   Servidor Zabbix
-                  <select value={deviceForm.zabbixServerId} onChange={(event) => setDeviceForm({ ...deviceForm, zabbixServerId: event.target.value, hostId: "", statusItemKey: "" })}>
-                    <option value="">Selecione um servidor</option>
-                    {zabbixServers.map((server) => (
-                      <option key={server.id} value={server.id ?? ""}>{server.name}</option>
-                    ))}
-                  </select>
+                  {topologyZabbixServerId ? (
+                    <input
+                      readOnly
+                      value={zabbixServers.find((s) => s.id === topologyZabbixServerId)?.name ?? topologyZabbixServerId}
+                      className="server-locked-input"
+                      title="Servidor fixado pelo mapa"
+                    />
+                  ) : (
+                    <select value={deviceForm.zabbixServerId} onChange={(event) => setDeviceForm({ ...deviceForm, zabbixServerId: event.target.value, hostId: "", statusItemKey: "" })}>
+                      <option value="">Selecione um servidor</option>
+                      {zabbixServers.map((server) => (
+                        <option key={server.id} value={server.id ?? ""}>{server.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </label>
                 <label>
                   <span className="field-label-row">
@@ -2529,6 +2577,25 @@ function TopologyEditor({
                   <option value="dotted">Pontilhada</option>
                   <option value="dashdot">Traço-Ponto</option>
                 </select>
+              </label>
+              <label>
+                Traçado do cabo
+                <div className="cable-routing-toggle">
+                  <button
+                    type="button"
+                    className={`cable-routing-btn${linkForm.routing === "straight" ? " active" : ""}`}
+                    onClick={() => setLinkForm({ ...linkForm, routing: "straight" })}
+                  >
+                    Reto
+                  </button>
+                  <button
+                    type="button"
+                    className={`cable-routing-btn${linkForm.routing === "malleable" ? " active" : ""}`}
+                    onClick={() => setLinkForm({ ...linkForm, routing: "malleable" })}
+                  >
+                    Maleável
+                  </button>
+                </div>
               </label>
               <label className="element-checkbox">
                 <input type="checkbox" checked={linkForm.showTraffic} onChange={(event) => setLinkForm({ ...linkForm, showTraffic: event.target.checked })} />
@@ -3967,6 +4034,65 @@ function AdminGroupsTab() {
   );
 }
 
+const ALIGN_THRESHOLD = 10;
+
+function nodeRect(node: DeviceFlowNode) {
+  const w = node.measured?.width ?? 80;
+  const h = node.measured?.height ?? 80;
+  return {
+    left: node.position.x,
+    cx: node.position.x + w / 2,
+    right: node.position.x + w,
+    top: node.position.y,
+    cy: node.position.y + h / 2,
+    bottom: node.position.y + h,
+    w,
+    h,
+  };
+}
+
+function computeSnap(dragged: DeviceFlowNode, others: DeviceFlowNode[]) {
+  const d = nodeRect(dragged);
+  let snapX: number | null = null;
+  let snapY: number | null = null;
+  let minXDist = ALIGN_THRESHOLD + 1;
+  let minYDist = ALIGN_THRESHOLD + 1;
+  const gx = new Set<number>();
+  const gy = new Set<number>();
+
+  for (const other of others) {
+    const o = nodeRect(other);
+
+    const xSnaps: [number, number, number][] = [
+      [d.left, o.left, 0], [d.left, o.cx, 0], [d.left, o.right, 0],
+      [d.cx, o.left, d.w / 2], [d.cx, o.cx, d.w / 2], [d.cx, o.right, d.w / 2],
+      [d.right, o.left, d.w], [d.right, o.cx, d.w], [d.right, o.right, d.w],
+    ];
+    for (const [dRef, oRef, offset] of xSnaps) {
+      const dist = Math.abs(dRef - oRef);
+      if (dist < ALIGN_THRESHOLD) {
+        gx.add(oRef);
+        if (dist < minXDist) { minXDist = dist; snapX = oRef - offset; }
+      }
+    }
+
+    const ySnaps: [number, number, number][] = [
+      [d.top, o.top, 0], [d.top, o.cy, 0], [d.top, o.bottom, 0],
+      [d.cy, o.top, d.h / 2], [d.cy, o.cy, d.h / 2], [d.cy, o.bottom, d.h / 2],
+      [d.bottom, o.top, d.h], [d.bottom, o.cy, d.h], [d.bottom, o.bottom, d.h],
+    ];
+    for (const [dRef, oRef, offset] of ySnaps) {
+      const dist = Math.abs(dRef - oRef);
+      if (dist < ALIGN_THRESHOLD) {
+        gy.add(oRef);
+        if (dist < minYDist) { minYDist = dist; snapY = oRef - offset; }
+      }
+    }
+  }
+
+  return { snapX, snapY, gx: Array.from(gx), gy: Array.from(gy) };
+}
+
 function TopologyCanvas({
   nodes,
   edges,
@@ -4000,9 +4126,61 @@ function TopologyCanvas({
   nodesDraggable?: boolean;
   snapEnabled?: boolean;
 }) {
+  const [rfInstance, setRfInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
+  const [guideFlowX, setGuideFlowX] = useState<number[]>([]);
+  const [guideFlowY, setGuideFlowY] = useState<number[]>([]);
+
+  const handleNodeDrag = useCallback(
+    (_: MouseEvent, draggedNode: DeviceFlowNode, draggedNodes: DeviceFlowNode[]) => {
+      if (draggedNodes.length !== 1) { setGuideFlowX([]); setGuideFlowY([]); return; }
+      const others = nodes.filter(n => n.id !== draggedNode.id);
+      const { gx, gy } = computeSnap(draggedNode, others);
+      setGuideFlowX(gx);
+      setGuideFlowY(gy);
+    },
+    [nodes]
+  );
+
+  const handleNodeDragStop = useCallback(
+    (_: MouseEvent, draggedNode: DeviceFlowNode, draggedNodes: DeviceFlowNode[]) => {
+      setGuideFlowX([]);
+      setGuideFlowY([]);
+      if (draggedNodes.length !== 1 || !onNodesChange) return;
+      const others = nodes.filter(n => n.id !== draggedNode.id);
+      const { snapX, snapY } = computeSnap(draggedNode, others);
+      if (snapX === null && snapY === null) return;
+      onNodesChange([{
+        id: draggedNode.id,
+        type: "position",
+        position: {
+          x: snapX ?? draggedNode.position.x,
+          y: snapY ?? draggedNode.position.y,
+        },
+        dragging: false,
+      }]);
+    },
+    [nodes, onNodesChange]
+  );
+
+  const viewport = rfInstance?.getViewport() ?? { x: 0, y: 0, zoom: 1 };
+
   return (
-    <section className="canvas">
-      <SnapshotsContext.Provider value={snapshotsByHost ?? new Map()}>
+    <section className="canvas canvas--alignable">
+      {guideFlowX.map((fx, i) => (
+        <div
+          key={`gx-${i}`}
+          className="align-guide align-guide--vertical"
+          style={{ left: Math.round(viewport.x + fx * viewport.zoom) }}
+        />
+      ))}
+      {guideFlowY.map((fy, i) => (
+        <div
+          key={`gy-${i}`}
+          className="align-guide align-guide--horizontal"
+          style={{ top: Math.round(viewport.y + fy * viewport.zoom) }}
+        />
+      ))}
+      <SnapshotsContext.Provider value={snapshotsByHost ?? EMPTY_SNAPSHOTS}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -4011,18 +4189,20 @@ function TopologyCanvas({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onInit={onInit}
+          onInit={(inst) => { setRfInstance(inst); onInit?.(inst); }}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          onNodeDrag={readonly ? undefined : handleNodeDrag}
+          onNodeDragStop={readonly ? undefined : handleNodeDragStop}
           connectionRadius={10}
           nodesDraggable={!readonly && (nodesDraggable ?? true)}
           nodesConnectable={!readonly}
           elementsSelectable={!readonly}
           snapToGrid={!readonly && snapEnabled}
-          snapGrid={[40, 40]}
+          snapGrid={[4, 4]}
           proOptions={{ hideAttribution: true }}
           fitView
         >
@@ -4160,6 +4340,8 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       badgeFontSize: edge.badgeFontSize,
       showTraffic: edge.showTraffic,
       showLabel: edge.showLabel,
+      routing: edge.routing,
+      waypoints: edge.waypoints,
       waypointDX: edge.waypointDX,
       waypointDY: edge.waypointDY,
       showSignal: edge.showSignal,
@@ -4203,6 +4385,8 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     badgeFontSize: data?.badgeFontSize,
     showTraffic: data?.showTraffic,
     showLabel: data?.showLabel,
+    routing: data?.routing,
+    waypoints: data?.waypoints,
     waypointDX: data?.waypointDX,
     waypointDY: data?.waypointDY,
     showSignal: data?.showSignal,
@@ -4248,6 +4432,7 @@ function defaultLinkForm() {
     color: "#9ca3af",
     strokeWidth: 2,
     lineStyle: "solid" as LineStyle,
+    routing: "straight" as "straight" | "malleable",
     badgeFontSize: 10,
     showTraffic: true,
     showLabel: true,

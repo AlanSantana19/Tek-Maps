@@ -99,6 +99,8 @@ export interface Topology {
     badgeFontSize?: number;
     showTraffic?: boolean;
     showLabel?: boolean;
+    routing?: "straight" | "malleable";
+    waypoints?: Array<{ x: number; y: number }>;
     waypointDX?: number;
     waypointDY?: number;
     showSignal?: boolean;

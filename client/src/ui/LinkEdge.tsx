@@ -14,6 +14,8 @@ const CABLE_TYPE_LABELS: Record<CableType, string> = {
   other:    "Outro",
 };
 
+export type Waypoint = { x: number; y: number };
+
 export type LinkEdgePayload = {
   sourceHostId?: string;
   targetHostId?: string;
@@ -30,6 +32,8 @@ export type LinkEdgePayload = {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
+  routing?: "straight" | "malleable";
+  // Waypoint offset from cable midpoint (used by both malleable and legacy cables)
   waypointDX?: number;
   waypointDY?: number;
   showSignal?: boolean;
@@ -52,7 +56,7 @@ export function LinkEdge({
   data: rawData,
   style,
   markerEnd,
-  selected
+  selected,
 }: EdgeProps) {
   const data = rawData as LinkEdgePayload | undefined;
   const snapshots = useContext(SnapshotsContext);
@@ -60,19 +64,30 @@ export function LinkEdge({
   const [hovered, setHovered] = useState(false);
   const [tooltipAbove, setTooltipAbove] = useState(true);
 
+  const routing = data?.routing;
   const waypointDX = data?.waypointDX ?? 0;
   const waypointDY = data?.waypointDY ?? 0;
 
-  // Midpoint + user offset
-  const wpX = (sourceX + targetX) / 2 + waypointDX;
-  const wpY = (sourceY + targetY) / 2 + waypointDY;
+  // ── Path & badge position ──────────────────────────────────────────────────
+  // "straight"  → straight line.
+  // "malleable" and legacy (undefined) → orthogonal Z-path (3 right-angle segments).
+  //   waypointDX shifts the vertical fold left/right from the midpoint.
+  let edgePath: string;
+  let badgeX: number;
+  let badgeY: number;
 
-  // Quadratic bezier control point so the curve passes through wpX/wpY at t=0.5
-  const cpX = 2 * wpX - 0.5 * sourceX - 0.5 * targetX;
-  const cpY = 2 * wpY - 0.5 * sourceY - 0.5 * targetY;
+  if (routing === "straight") {
+    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+    badgeX = (sourceX + targetX) / 2;
+    badgeY = (sourceY + targetY) / 2;
+  } else {
+    const foldX = (sourceX + targetX) / 2 + waypointDX;
+    edgePath = `M ${sourceX} ${sourceY} L ${foldX} ${sourceY} L ${foldX} ${targetY} L ${targetX} ${targetY}`;
+    badgeX = foldX;
+    badgeY = (sourceY + targetY) / 2;
+  }
 
-  const edgePath = `M ${sourceX} ${sourceY} Q ${cpX} ${cpY} ${targetX} ${targetY}`;
-
+  // ── Style ──────────────────────────────────────────────────────────────────
   const configuredColor = data?.color ?? "#9ca3af";
   const strokeWidth     = data?.strokeWidth ?? 2;
   const showTraffic     = data?.showTraffic ?? true;
@@ -82,6 +97,7 @@ export function LinkEdge({
                         : data?.lineStyle === "dashdot" ? "12 4 2 4"
                         : undefined;
 
+  // ── Traffic ────────────────────────────────────────────────────────────────
   const sourceSnapshot = data?.sourceHostId ? snapshots.get(data.sourceHostId) : undefined;
   const sourcePort = data?.sourceOutInterface
     ? sourceSnapshot?.ports.find((p) => p.id === data!.sourceOutInterface)
@@ -103,19 +119,19 @@ export function LinkEdge({
                 : totalBps >= 1e6 ? "2s"
                 : "3s";
 
-  const showSignal = data?.showSignal ?? false;
-  const signalLabel = data?.signalLabel;
-  const signalHostId = data?.signalHostId ?? data?.sourceHostId;
+  // ── Signal ─────────────────────────────────────────────────────────────────
+  const showSignal    = data?.showSignal ?? false;
+  const signalLabel   = data?.signalLabel;
+  const signalHostId  = data?.signalHostId ?? data?.sourceHostId;
   const signalMetrics = signalHostId ? (snapshots.get(signalHostId)?.metrics ?? []) : [];
-  const signalTxItem = data?.signalTxMetricKey ? signalMetrics.find((m) => m.key === data!.signalTxMetricKey) : undefined;
-  const signalRxItem = data?.signalRxMetricKey ? signalMetrics.find((m) => m.key === data!.signalRxMetricKey) : undefined;
+  const signalTxItem  = data?.signalTxMetricKey ? signalMetrics.find((m) => m.key === data!.signalTxMetricKey) : undefined;
+  const signalRxItem  = data?.signalRxMetricKey ? signalMetrics.find((m) => m.key === data!.signalRxMetricKey) : undefined;
 
-  const hasSignalData = showSignal && (!!signalTxItem || !!signalRxItem);
-  const showBadge     = showTraffic && hasInterfaces;
-
+  const hasSignalData  = showSignal && (!!signalTxItem || !!signalRxItem);
+  const showBadge      = showTraffic && hasInterfaces;
+  const isMaleavel     = routing === "malleable" || (routing === undefined && (waypointDX !== 0 || waypointDY !== 0));
+  const tracadoLabel   = isMaleavel ? "Maleável/Dobrável" : "Reto";
   const cableTypeLabel = (data?.showLabel ?? true) && data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
-  const sourceIfName   = data?.sourceInterfaceName
-    ?? (data?.sourceOutInterface ? `if-${data.sourceOutInterface}` : undefined);
 
   const edgeStyle = {
     ...style,
@@ -128,33 +144,25 @@ export function LinkEdge({
   const pulsePathId = `pulse-path-${id}`;
   const badgeW = 76;
 
-  function handleBadgeMouseEnter(e: React.MouseEvent) {
-    setHovered(true);
-    setTooltipAbove(e.clientY > 140);
-  }
-
+  // ── Waypoint drag (malleable and legacy cables) ────────────────────────────
   function startWaypointDrag(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
-
     const onMove = (ev: MouseEvent) => {
-      const flowPos = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-      const newDX = flowPos.x - (sourceX + targetX) / 2;
-      const newDY = flowPos.y - (sourceY + targetY) / 2;
+      const fp = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+      const newDX = fp.x - (sourceX + targetX) / 2;
       setEdges((edges) =>
         edges.map((edge) =>
           edge.id === id
-            ? { ...edge, data: { ...(edge.data as object), waypointDX: newDX, waypointDY: newDY } }
+            ? { ...edge, data: { ...(edge.data as object), waypointDX: newDX, waypointDY: 0 } }
             : edge
         )
       );
     };
-
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
@@ -170,7 +178,13 @@ export function LinkEdge({
     );
   }
 
-  const showWaypointHandle = selected || waypointDX !== 0 || waypointDY !== 0;
+  // Show the drag handle for bendable cables when selected or already bent
+  const showHandle = routing !== "straight" && (selected || waypointDX !== 0 || waypointDY !== 0);
+
+  function handleBadgeMouseEnter(e: React.MouseEvent) {
+    setHovered(true);
+    setTooltipAbove(e.clientY > 140);
+  }
 
   return (
     <>
@@ -186,7 +200,7 @@ export function LinkEdge({
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Animated pulse dot (source → target) */}
+      {/* Animated pulse dot */}
       {showTraffic && hasActiveTraffic && !isDown ? (
         <g>
           <circle r={strokeWidth + 5} fill={strokeColor} opacity={0.18}>
@@ -207,15 +221,15 @@ export function LinkEdge({
       ) : null}
 
       <EdgeLabelRenderer>
-        {/* Draggable waypoint handle — shown when edge is selected or already offset */}
-        {showWaypointHandle ? (
+        {/* Waypoint drag handle — only for bendable cables */}
+        {showHandle ? (
           <div
             className="nodrag nopan edge-waypoint-handle"
             onMouseDown={startWaypointDrag}
             onDoubleClick={resetWaypoint}
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${wpX}px, ${wpY}px)`,
+              transform: `translate(-50%, -50%) translate(${badgeX}px, ${badgeY}px)`,
               width: 14,
               height: 14,
               borderRadius: "50%",
@@ -230,38 +244,57 @@ export function LinkEdge({
           />
         ) : null}
 
-        {/* TX/RX + Signal badge */}
-        {showBadge ? (
-          <div
-            className="nodrag nopan"
-            onMouseEnter={handleBadgeMouseEnter}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${wpX}px, ${wpY}px)`,
-              pointerEvents: "all",
-              cursor: "default",
-              background: isDown ? "#1a0808" : "#0c0f14",
-              border: `1px solid ${isDown ? "#ef4444" : "#273244"}`,
-              borderRadius: 4,
-              padding: "3px 8px",
-              minWidth: badgeW,
-              textAlign: "center",
-              userSelect: "none",
-              lineHeight: 1.4,
-              ...(isDown
-                ? { filter: "drop-shadow(0 0 4px rgba(239,68,68,0.35))" }
-                : { boxShadow: "0 1px 5px rgba(0,0,0,.5)" }),
-            }}
-          >
-            {isDown ? (
-              <span style={{ color: "#ef4444", fontSize: Math.round(badgeFontSize * 1.1), fontWeight: 800, letterSpacing: "0.08em" }}>
+        {/* TX/RX badge or invisible hover zone */}
+        <div
+          className="nodrag nopan"
+          onMouseEnter={handleBadgeMouseEnter}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${badgeX}px, ${badgeY}px)`,
+            pointerEvents: "all",
+            cursor: "default",
+            userSelect: "none",
+            zIndex: showBadge ? 11 : 8,
+            ...(showBadge
+              ? {
+                  background: isDown ? "#1a0808" : "#0c0f14",
+                  border: `1px solid ${isDown ? "#ef4444" : "#273244"}`,
+                  borderRadius: 4,
+                  padding: "3px 8px",
+                  minWidth: badgeW,
+                  textAlign: "center" as const,
+                  lineHeight: 1.4,
+                  ...(isDown
+                    ? { filter: "drop-shadow(0 0 4px rgba(239,68,68,0.35))" }
+                    : { boxShadow: "0 1px 5px rgba(0,0,0,.5)" }),
+                }
+              : { width: 24, height: 24 }),
+          }}
+        >
+          {showBadge &&
+            (isDown ? (
+              <span
+                style={{
+                  color: "#ef4444",
+                  fontSize: Math.round(badgeFontSize * 1.1),
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                }}
+              >
                 DOWN
               </span>
             ) : (
               <>
                 {cableTypeLabel ? (
-                  <div style={{ color: "#fff", fontSize: Math.round(badgeFontSize * 0.8), fontWeight: 700, letterSpacing: "0.04em" }}>
+                  <div
+                    style={{
+                      color: "#fff",
+                      fontSize: Math.round(badgeFontSize * 0.8),
+                      fontWeight: 700,
+                      letterSpacing: "0.04em",
+                    }}
+                  >
                     {cableTypeLabel}
                   </div>
                 ) : null}
@@ -272,24 +305,21 @@ export function LinkEdge({
                   RX: {formatBps(rxBps)}
                 </div>
               </>
-            )}
-          </div>
-        ) : null}
+            ))}
+        </div>
 
         {/* Hover tooltip */}
-        {(showBadge || hasSignalData) && hovered ? (
+        {hovered ? (
           <div
             className="edge-tooltip"
             style={{
               position: "absolute",
-              transform: `translate(-50%, ${tooltipAbove ? "calc(-100% - 10px)" : "10px"}) translate(${wpX}px, ${wpY}px)`,
+              transform: `translate(-50%, ${tooltipAbove ? "calc(-100% - 10px)" : "10px"}) translate(${badgeX}px, ${badgeY}px)`,
               pointerEvents: "none",
               zIndex: 20,
             }}
           >
-            {cableTypeLabel && (
-              <div className="edge-tooltip-title">{cableTypeLabel}</div>
-            )}
+            {cableTypeLabel && <div className="edge-tooltip-title">{cableTypeLabel}</div>}
             {hasInterfaces && (
               <>
                 <div className="edge-tooltip-row">
@@ -316,7 +346,8 @@ export function LinkEdge({
                   <div className="edge-tooltip-row">
                     <span className="edge-tooltip-label edge-tooltip-tx">Sinal TX</span>
                     <span className="edge-tooltip-value">
-                      {String(signalTxItem.value)}{signalTxItem.unit ? ` ${signalTxItem.unit}` : ""}
+                      {String(signalTxItem.value)}
+                      {signalTxItem.unit ? ` ${signalTxItem.unit}` : ""}
                     </span>
                   </div>
                 )}
@@ -324,12 +355,18 @@ export function LinkEdge({
                   <div className="edge-tooltip-row">
                     <span className="edge-tooltip-label edge-tooltip-rx">Sinal RX</span>
                     <span className="edge-tooltip-value">
-                      {String(signalRxItem.value)}{signalRxItem.unit ? ` ${signalRxItem.unit}` : ""}
+                      {String(signalRxItem.value)}
+                      {signalRxItem.unit ? ` ${signalRxItem.unit}` : ""}
                     </span>
                   </div>
                 )}
               </>
             ) : null}
+            {(hasInterfaces || hasSignalData) && <div className="edge-tooltip-divider" />}
+            <div className="edge-tooltip-row">
+              <span className="edge-tooltip-label">Traçado</span>
+              <span className="edge-tooltip-value">{tracadoLabel}</span>
+            </div>
           </div>
         ) : null}
       </EdgeLabelRenderer>

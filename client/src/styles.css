@@ -689,6 +689,80 @@ select {
   color: #ffffff;
 }
 
+.create-tool-cable-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 2px;
+  color: #4b6070;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-top: 1px solid #1a2230;
+  margin-top: 2px;
+  user-select: none;
+}
+
+.create-tool-cable-btn {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 10px 7px 20px;
+  background: transparent;
+  color: #d6dde6;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.create-tool-cable-btn:hover,
+.create-tool-cable-btn.active {
+  border-color: #303846;
+  background: #111318;
+  color: #ffffff;
+}
+
+/* Small visual line indicator in the menu */
+.cable-routing-icon {
+  display: block;
+  width: 26px;
+  height: 14px;
+  flex-shrink: 0;
+  background: none;
+  position: relative;
+}
+
+.cable-routing-icon::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: currentColor;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.cable-routing-icon--straight::before {
+  top: 6px;
+  height: 2px;
+}
+
+.cable-routing-icon--malleable::before {
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 99px;
+  /* wavy appearance via box-shadow stacking */
+  box-shadow:
+    0 -4px 0 -1px currentColor,
+    0  4px 0 -1px currentColor;
+  background: linear-gradient(90deg, transparent 0%, currentColor 30%, transparent 50%, currentColor 70%, transparent 100%);
+}
+
 .host-picker-panel {
   position: fixed;
   top: 78px;
@@ -744,6 +818,14 @@ select {
 .host-picker-list {
   display: grid;
   gap: 8px;
+}
+
+.server-locked-input {
+  cursor: not-allowed;
+  opacity: 0.7;
+  background: #0b1020 !important;
+  border-color: #1a2535 !important;
+  color: #8d99a6 !important;
 }
 
 .host-picker-count {
@@ -912,6 +994,31 @@ select {
   min-width: 0;
   min-height: 0;
   height: 100%;
+}
+
+.canvas--alignable {
+  position: relative;
+  overflow: hidden;
+}
+
+.align-guide {
+  position: absolute;
+  background: #4096ff;
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.align-guide--vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.align-guide--horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
 }
 
 .element-editor-panel {
@@ -1239,6 +1346,60 @@ select {
   font-size: 11px;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.cable-routing-toggle {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cable-routing-btn {
+  flex: 1;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1.5px solid #273244;
+  background: #141b26;
+  color: #8899aa;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+
+.cable-routing-btn:hover {
+  border-color: #3b82f6;
+  color: #e2e8f0;
+}
+
+.cable-routing-btn.active {
+  border-color: #3b82f6;
+  background: #1e2d3d;
+  color: #e2e8f0;
+}
+
+.edge-add-waypoint {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 1.5px dashed #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #60a5fa;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: all;
+  user-select: none;
+  opacity: 0.85;
+  transition: opacity .15s, background .15s;
+}
+
+.edge-add-waypoint:hover {
+  opacity: 1;
+  background: #1e2d3d;
 }
 
 .cable-type-clear:hover {
