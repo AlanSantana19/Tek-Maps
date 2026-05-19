@@ -3246,11 +3246,6 @@ select {
 }
 
 /* ── 2FA / Account ──────────────────────────────────────────────────────── */
-.account-nav-item {
-  margin-top: auto;
-  margin-bottom: 0;
-}
-
 .login-totp-hint {
   font-size: 13px;
   color: #9ca3af;

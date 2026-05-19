@@ -95,7 +95,7 @@ const nodeTypes = { device: DeviceNode };
 const edgeTypes = { link: LinkEdge };
 const EMPTY_SNAPSHOTS = new Map<string, DeviceSnapshot>();
 
-type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding" | "account";
+type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding";
 
 type DeviceNodeData = {
   label: string;
@@ -817,15 +817,6 @@ export function App() {
 
         {error ? <p className="error">{error}</p> : null}
 
-        <button
-          className={`nav-item account-nav-item${activeSection === "account" ? " active" : ""}`}
-          title={sidebarCollapsed ? "Conta" : undefined}
-          onClick={() => setActiveSection("account")}
-        >
-          <Shield size={18} />
-          <span>Conta</span>
-        </button>
-
         <button className="logout-button" onClick={handleLogout} title={sidebarCollapsed ? "Sair" : undefined}>
           <LogOut size={18} />
           <span>Sair</span>
@@ -905,7 +896,6 @@ export function App() {
           />
         ) : null}
         {activeSection === "admin" ? <AdminUsers /> : null}
-        {activeSection === "account" ? <AccountPanel /> : null}
       </section>
     </main>
   );
@@ -3264,37 +3254,21 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 function AdminUsers() {
-  const [adminTab, setAdminTab] = useState<"users" | "groups" | "permissions">("users");
+  const [adminTab, setAdminTab] = useState<"users" | "groups" | "permissions" | "account">("users");
 
   return (
     <section className="page">
       <PageHeader title="Admin" subtitle="Crie usuarios e defina o nivel de acesso ao Tek Map." />
-      <div className="element-tabs" role="tablist" style={{ marginBottom: 18, maxWidth: 480, gridTemplateColumns: "repeat(3, 1fr)" }}>
-        <button
-          role="tab"
-          className={adminTab === "users" ? "active" : ""}
-          onClick={() => setAdminTab("users")}
-        >
-          Usuarios
-        </button>
-        <button
-          role="tab"
-          className={adminTab === "groups" ? "active" : ""}
-          onClick={() => setAdminTab("groups")}
-        >
-          Grupos
-        </button>
-        <button
-          role="tab"
-          className={adminTab === "permissions" ? "active" : ""}
-          onClick={() => setAdminTab("permissions")}
-        >
-          Permissoes
-        </button>
+      <div className="element-tabs" role="tablist" style={{ marginBottom: 18, maxWidth: 640, gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <button role="tab" className={adminTab === "users" ? "active" : ""} onClick={() => setAdminTab("users")}>Usuarios</button>
+        <button role="tab" className={adminTab === "groups" ? "active" : ""} onClick={() => setAdminTab("groups")}>Grupos</button>
+        <button role="tab" className={adminTab === "permissions" ? "active" : ""} onClick={() => setAdminTab("permissions")}>Permissoes</button>
+        <button role="tab" className={adminTab === "account" ? "active" : ""} onClick={() => setAdminTab("account")}>Conta</button>
       </div>
       {adminTab === "users" ? <AdminUsersTab /> : null}
       {adminTab === "groups" ? <AdminGroupsTab /> : null}
       {adminTab === "permissions" ? <AdminMapPermissionsTab /> : null}
+      {adminTab === "account" ? <AccountPanel /> : null}
     </section>
   );
 }
