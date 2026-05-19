@@ -29,6 +29,7 @@ export interface NavLogoConfig {
 
 export interface FaviconConfig {
   dataUrl?: string;
+  size?: number;
   updatedAt?: string;
 }
 
@@ -233,16 +234,18 @@ export class SettingsRepository {
       ["favicon_config"]
     );
     const row = result.rows[0];
-    if (!row) return {};
+    if (!row) return { size: 16 };
     return {
       dataUrl: typeof row.value?.dataUrl === "string" && row.value.dataUrl.startsWith("data:image/") ? row.value.dataUrl : undefined,
+      size: normalizeFaviconSize(row.value?.size),
       updatedAt: row.updated_at?.toISOString?.() ?? row.updated_at
     };
   }
 
   async saveFaviconConfig(config: FaviconConfig): Promise<FaviconConfig> {
     const value = {
-      dataUrl: typeof config.dataUrl === "string" && config.dataUrl.startsWith("data:image/") ? config.dataUrl : undefined
+      dataUrl: typeof config.dataUrl === "string" && config.dataUrl.startsWith("data:image/") ? config.dataUrl : undefined,
+      size: normalizeFaviconSize(config.size)
     };
     const result = await this.db.query(
       `INSERT INTO app_settings (key, value, updated_at)
@@ -255,6 +258,7 @@ export class SettingsRepository {
     );
     return {
       dataUrl: result.rows[0].value?.dataUrl,
+      size: normalizeFaviconSize(result.rows[0].value?.size),
       updatedAt: result.rows[0].updated_at?.toISOString?.() ?? result.rows[0].updated_at
     };
   }
@@ -290,6 +294,10 @@ function normalizeLoginLogoConfig(input: Partial<LoginLogoConfig>): LoginLogoCon
     titleColor: normalizeColor(input.titleColor, DEFAULT_LOGIN_LOGO_CONFIG.titleColor),
     updatedAt: input.updatedAt
   };
+}
+
+function normalizeFaviconSize(value: unknown): number {
+  return clampNumber(value, 8, 64, 16);
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number) {

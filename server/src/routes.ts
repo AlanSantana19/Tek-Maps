@@ -152,7 +152,8 @@ const navLogoConfigSchema = z.object({
 });
 
 const faviconConfigSchema = z.object({
-  dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional()
+  dataUrl: z.string().max(MAX_ICON_DATA_URL_BYTES).optional(),
+  size: z.number().int().min(8).max(64).optional()
 });
 
 export function createRoutes(

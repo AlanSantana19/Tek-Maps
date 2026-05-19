@@ -280,5 +280,6 @@ export interface NavLogoConfig {
 
 export interface FaviconConfig {
   dataUrl?: string;
+  size?: number;
   updatedAt?: string;
 }

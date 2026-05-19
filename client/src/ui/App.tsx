@@ -206,11 +206,12 @@ const menuItems: Array<{ id: SectionId; label: string; icon: typeof BarChart3 }>
   { id: "admin", label: "Admin", icon: Users }
 ];
 
-function applyFavicon(dataUrl: string) {
+function applyFavicon(dataUrl: string, size = 16) {
   document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]').forEach((el) => el.remove());
   const link = document.createElement("link");
   link.rel = "icon";
   link.href = dataUrl;
+  link.setAttribute("sizes", `${size}x${size}`);
   document.head.appendChild(link);
 }
 
@@ -292,7 +293,7 @@ export function App() {
   useEffect(() => {
     void getLoginLogoConfig().then(setLoginLogoConfig).catch(() => {});
     void getNavLogoConfig().then(setNavLogoConfig).catch(() => {});
-    void getFaviconConfig().then((cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl); }).catch(() => {});
+    void getFaviconConfig().then((cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl, cfg.size); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -791,7 +792,7 @@ export function App() {
             faviconConfig={faviconConfig}
             onLoginConfigChange={setLoginLogoConfig}
             onNavConfigChange={setNavLogoConfig}
-            onFaviconConfigChange={(cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl); }}
+            onFaviconConfigChange={(cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl, cfg.size); }}
           />
         ) : null}
         {activeSection === "admin" ? <AdminUsers /> : null}
@@ -894,7 +895,7 @@ function BrandingPanel({
     if (file.size > 500_000) { setFaviconStatus("A imagem precisa ter ate 500 KB."); return; }
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      setFaviconDraft({ dataUrl });
+      setFaviconDraft((c) => ({ ...c, dataUrl }));
     } catch { setFaviconStatus("Nao foi possivel ler a imagem."); }
   }
 
@@ -1095,8 +1096,15 @@ function BrandingPanel({
                   onChange={(event) => void handleFaviconFile(event.target.files?.[0])}
                 />
               </div>
+              <label>
+                Tamanho
+                <div className="range-row">
+                  <input type="range" min={8} max={64} value={faviconDraft.size ?? 16} onChange={(event) => setFaviconDraft((c) => ({ ...c, size: Number(event.target.value) }))} />
+                  <span className="range-value">{faviconDraft.size ?? 16}px</span>
+                </div>
+              </label>
               <div className="action-row">
-                <button className="secondary-button" type="button" onClick={() => setFaviconDraft({})}>
+                <button className="secondary-button" type="button" onClick={() => setFaviconDraft({ size: 16 })}>
                   Restaurar padrao
                 </button>
                 <button className="save-button" type="button" onClick={() => void saveFavicon()} disabled={savingFavicon}>
@@ -1111,7 +1119,7 @@ function BrandingPanel({
               <div className="favicon-preview">
                 <div className="favicon-preview-tab">
                   {faviconDraft.dataUrl ? (
-                    <img src={faviconDraft.dataUrl} alt="Favicon" width={16} height={16} />
+                    <img src={faviconDraft.dataUrl} alt="Favicon" width={faviconDraft.size ?? 16} height={faviconDraft.size ?? 16} style={{ objectFit: "contain" }} />
                   ) : (
                     <Palette size={14} />
                   )}
