@@ -208,11 +208,18 @@ const menuItems: Array<{ id: SectionId; label: string; icon: typeof BarChart3 }>
   { id: "admin", label: "Admin", icon: Users }
 ];
 
-function applyFavicon(dataUrl: string, size = 16) {
+async function applyFavicon(dataUrl: string, size = 16) {
+  const img = new window.Image();
+  await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = dataUrl; });
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  canvas.getContext("2d")!.drawImage(img, 0, 0, size, size);
+  const resized = canvas.toDataURL("image/png");
   document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]').forEach((el) => el.remove());
   const link = document.createElement("link");
   link.rel = "icon";
-  link.href = dataUrl;
+  link.href = resized;
   link.setAttribute("sizes", `${size}x${size}`);
   document.head.appendChild(link);
 }

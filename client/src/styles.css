@@ -269,7 +269,8 @@ select {
 .brand-with-logo {
   display: grid;
   gap: 4px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 .brand-with-logo span {
