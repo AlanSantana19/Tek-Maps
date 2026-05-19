@@ -829,7 +829,7 @@ export function App() {
 
       <section className="content-shell">
         {activeSection === "dashboard" ? (
-          <Dashboard hosts={hosts} nodesCount={nodes.length} edgesCount={edges.length} alertsCount={alertsCount} downHosts={downHosts} mapsCount={topologies.length} />
+          <Dashboard hosts={hosts} alertsCount={alertsCount} downHosts={downHosts} mapsCount={topologies.length} />
         ) : null}
 
         {activeSection === "editor" && editorMode === "maps" ? (
@@ -1253,15 +1253,11 @@ function BrandingPanel({
 
 function Dashboard({
   hosts,
-  nodesCount,
-  edgesCount,
   alertsCount,
   downHosts,
   mapsCount
 }: {
   hosts: DeviceSnapshot[];
-  nodesCount: number;
-  edgesCount: number;
   alertsCount: number;
   downHosts: number;
   mapsCount: number;
@@ -1286,8 +1282,6 @@ function Dashboard({
       <div className="summary-grid">
         <SummaryCard label="Mapas" value={mapsCount} />
         <SummaryCard label="Hosts" value={hosts.length} />
-        <SummaryCard label="Dispositivos no mapa" value={nodesCount} />
-        <SummaryCard label="Links" value={edgesCount} />
         <SummaryCard label="Alertas" value={alertsCount} tone={alertsCount ? "warning" : "ok"} />
         <SummaryCard label="Indisponiveis" value={downHosts} tone={downHosts ? "danger" : "ok"} />
         <SummaryCard label="Ultima sync" value={latestSync ? new Date(latestSync).toLocaleString() : "Sem dados"} />

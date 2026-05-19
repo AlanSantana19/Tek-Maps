@@ -392,7 +392,7 @@ select {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -2948,6 +2948,12 @@ select {
 
 .link-edge-iflabel.port-down .iflabel-name {
   color: #fca5a5;
+}
+
+@media (max-width: 1100px) and (min-width: 821px) {
+  .summary-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 820px) {
