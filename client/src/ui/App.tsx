@@ -211,6 +211,17 @@ const menuItems: Array<{ id: SectionId; label: string; icon: typeof BarChart3 }>
   { id: "admin", label: "Admin", icon: Users }
 ];
 
+// 1×1 transparent PNG — used to explicitly clear the favicon so the browser doesn't keep the cached one
+const TRANSPARENT_FAVICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=";
+
+function setFaviconHref(href: string) {
+  document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]').forEach((el) => el.remove());
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
 async function applyFavicon(dataUrl: string, size = 16) {
   const img = new window.Image();
   await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = dataUrl; });
@@ -218,13 +229,11 @@ async function applyFavicon(dataUrl: string, size = 16) {
   canvas.width = size;
   canvas.height = size;
   canvas.getContext("2d")!.drawImage(img, 0, 0, size, size);
-  const resized = canvas.toDataURL("image/png");
-  document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]').forEach((el) => el.remove());
-  const link = document.createElement("link");
-  link.rel = "icon";
-  link.href = resized;
-  link.setAttribute("sizes", `${size}x${size}`);
-  document.head.appendChild(link);
+  setFaviconHref(canvas.toDataURL("image/png"));
+}
+
+function clearFavicon() {
+  setFaviconHref(TRANSPARENT_FAVICON);
 }
 
 const DEFAULT_LOGIN_LOGO_CONFIG: LoginLogoConfig = {
@@ -306,7 +315,7 @@ export function App() {
   useEffect(() => {
     void getLoginLogoConfig().then(setLoginLogoConfig).catch(() => {});
     void getNavLogoConfig().then(setNavLogoConfig).catch(() => {});
-    void getFaviconConfig().then((cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl, cfg.size); }).catch(() => {});
+    void getFaviconConfig().then((cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl, cfg.size); else clearFavicon(); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -822,7 +831,14 @@ export function App() {
             faviconConfig={faviconConfig}
             onLoginConfigChange={setLoginLogoConfig}
             onNavConfigChange={setNavLogoConfig}
-            onFaviconConfigChange={(cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl, cfg.size); }}
+            onFaviconConfigChange={(cfg) => {
+              setFaviconConfig(cfg);
+              if (cfg.dataUrl) {
+                applyFavicon(cfg.dataUrl, cfg.size);
+              } else {
+                clearFavicon();
+              }
+            }}
           />
         ) : null}
         {activeSection === "admin" ? <AdminUsers /> : null}
@@ -929,16 +945,28 @@ function BrandingPanel({
     } catch { setFaviconStatus("Nao foi possivel ler a imagem."); }
   }
 
-  async function saveFavicon() {
+  async function persistFavicon(payload: FaviconConfig, successMsg: string): Promise<boolean> {
     setSavingFavicon(true);
     setFaviconStatus(null);
     try {
-      const saved = await updateFaviconConfig(faviconDraft);
+      const saved = await updateFaviconConfig(payload);
       onFaviconConfigChange(saved);
-      setFaviconStatus("Salvo.");
+      setFaviconStatus(successMsg);
+      return true;
     } catch (err) {
       setFaviconStatus(err instanceof Error ? err.message : "Falha ao salvar.");
+      return false;
     } finally { setSavingFavicon(false); }
+  }
+
+  async function saveFavicon() {
+    await persistFavicon(faviconDraft, "Salvo.");
+  }
+
+  async function resetFavicon() {
+    if (await persistFavicon({ size: 16 }, "Restaurado.")) {
+      setFaviconDraft({ size: 16 });
+    }
   }
 
   return (
@@ -1134,7 +1162,7 @@ function BrandingPanel({
                 </div>
               </label>
               <div className="action-row">
-                <button className="secondary-button" type="button" onClick={() => setFaviconDraft({ size: 16 })}>
+                <button className="secondary-button" type="button" onClick={() => void resetFavicon()} disabled={savingFavicon}>
                   Restaurar padrao
                 </button>
                 <button className="save-button" type="button" onClick={() => void saveFavicon()} disabled={savingFavicon}>
