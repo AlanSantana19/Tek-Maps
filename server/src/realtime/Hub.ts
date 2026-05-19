@@ -4,7 +4,7 @@ import { verifyToken } from "../auth.js";
 import type { DeviceSnapshot } from "../types.js";
 
 interface OnlineUser {
-  email: string;
+  name: string;
   ip: string;
   connectedAt: string;
 }
@@ -26,7 +26,7 @@ export class Hub {
           const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0])?.trim()
             ?? req.socket.remoteAddress
             ?? "desconhecido";
-          this.onlineUsers.set(ws, { email: payload.sub, ip, connectedAt: new Date().toISOString() });
+          this.onlineUsers.set(ws, { name: payload.name, ip, connectedAt: new Date().toISOString() });
         }
       }
 

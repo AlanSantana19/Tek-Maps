@@ -224,7 +224,7 @@ export function createRoutes(
       }
 
       void activity.log({ userEmail: accessUser.email, userName: accessUser.name, action: "login", ip: req.ip }).catch(() => {});
-      res.json({ token: signUserToken({ email: accessUser.email, role: accessUser.role }) });
+      res.json({ token: signUserToken({ email: accessUser.email, name: accessUser.name, role: accessUser.role }) });
     })().catch((error) => {
       res.status(500).json({ error: "internal_error" });
       req.log?.error({ error }, "login failed");
@@ -267,7 +267,7 @@ export function createRoutes(
       if (totpUser) {
         void activity.log({ userEmail: totpUser.email, userName: totpUser.name, action: "login", ip: req.ip }).catch(() => {});
       }
-      res.json({ token: signUserToken({ email: challenge.sub, role: challenge.role }) });
+      res.json({ token: signUserToken({ email: challenge.sub, name: totpUser?.name ?? challenge.sub, role: challenge.role }) });
     })().catch((error) => {
       res.status(500).json({ error: "internal_error" });
       req.log?.error({ error }, "totp verification failed");

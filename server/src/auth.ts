@@ -3,11 +3,11 @@ import jwt from "jsonwebtoken";
 import { config } from "./config.js";
 
 export interface AuthRequest extends Request {
-  user?: { sub: string; role: "admin" | "operator" | "viewer" };
+  user?: { sub: string; name: string; role: "admin" | "operator" | "viewer" };
 }
 
-export function signUserToken(user: { email: string; role: "admin" | "operator" | "viewer" }) {
-  return jwt.sign({ sub: user.email, role: user.role }, config.JWT_SECRET, {
+export function signUserToken(user: { email: string; name: string; role: "admin" | "operator" | "viewer" }) {
+  return jwt.sign({ sub: user.email, name: user.name, role: user.role }, config.JWT_SECRET, {
     expiresIn: "8h"
   });
 }
@@ -28,7 +28,7 @@ export function verifyChallengeToken(token: string): { sub: string; uid: string;
   }
 }
 
-export function verifyToken(token: string): { sub: string; role: "admin" | "operator" | "viewer" } | null {
+export function verifyToken(token: string): { sub: string; name: string; role: "admin" | "operator" | "viewer" } | null {
   try {
     const payload = jwt.verify(token, config.JWT_SECRET) as AuthRequest["user"] & { totp_pending?: boolean };
     if (payload?.totp_pending) return null;

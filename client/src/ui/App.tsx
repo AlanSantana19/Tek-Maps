@@ -1294,9 +1294,9 @@ function Dashboard({
               <p className="empty-state">Nenhum usuario conectado.</p>
             ) : (
               onlineUsers.map((user, i) => (
-                <div className="activity-row" key={`${user.email}-${i}`}>
+                <div className="activity-row" key={`${user.name}-${i}`}>
                   <span className="activity-dot online" />
-                  <span className="activity-name">{user.email}</span>
+                  <span className="activity-name">{user.name}</span>
                   <span className="activity-action">{user.ip}</span>
                   <span className="activity-time">desde {new Date(user.connectedAt).toLocaleTimeString()}</span>
                 </div>
