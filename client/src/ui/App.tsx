@@ -1272,7 +1272,7 @@ function Dashboard({
     void getOnlineUsers().then(setOnlineUsers).catch(() => {});
     const interval = setInterval(() => {
       void getOnlineUsers().then(setOnlineUsers).catch(() => {});
-    }, 15_000);
+    }, 5_000);
     return () => clearInterval(interval);
   }, []);
 

@@ -26,7 +26,7 @@ export class Hub {
           const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0])?.trim()
             ?? req.socket.remoteAddress
             ?? "desconhecido";
-          this.onlineUsers.set(ws, { name: payload.name, ip, connectedAt: new Date().toISOString() });
+          this.onlineUsers.set(ws, { name: payload.name ?? payload.sub, ip, connectedAt: new Date().toISOString() });
         }
       }
 
