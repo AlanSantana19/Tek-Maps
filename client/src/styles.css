@@ -103,6 +103,11 @@ select {
   display: grid;
   grid-template-columns: 280px 1fr;
   overflow: hidden;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 60px 1fr;
 }
 
 .sidebar {
@@ -113,6 +118,92 @@ select {
   border-right: 1px solid #202833;
   background: #080a0d;
   min-width: 0;
+  overflow: hidden;
+  transition: padding 0.2s ease;
+}
+
+.sidebar--collapsed {
+  padding: 12px 8px;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Toggle button */
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  margin-left: auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7c8a;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-toggle:hover {
+  background: #101520;
+  color: #e7eef2;
+}
+
+.sidebar--collapsed .sidebar-toggle {
+  margin-left: 0;
+}
+
+/* Brand collapsed */
+.sidebar--collapsed .brand {
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.sidebar--collapsed .brand-text {
+  display: none;
+}
+
+.sidebar--collapsed .brand-with-logo span,
+.sidebar--collapsed .brand-with-logo small {
+  display: none;
+}
+
+.sidebar--collapsed .nav-logo-img {
+  max-width: 36px !important;
+  width: 36px !important;
+}
+
+/* Nav items collapsed */
+.sidebar--collapsed .side-nav {
+  width: 100%;
+}
+
+.sidebar--collapsed .nav-item {
+  justify-content: center;
+  padding: 10px;
+  gap: 0;
+}
+
+.sidebar--collapsed .nav-item span {
+  display: none;
+}
+
+/* Sidebar-save hidden when collapsed */
+.sidebar--collapsed .sidebar-save {
+  display: none;
+}
+
+/* Logout collapsed */
+.sidebar--collapsed .logout-button {
+  width: 40px;
+  padding: 10px;
+  justify-content: center;
+}
+
+.sidebar--collapsed .logout-button span {
+  display: none;
 }
 
 .side-nav {

@@ -4,6 +4,8 @@ import {
   BarChart3,
   Cable,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   HardDrive,
@@ -247,6 +249,7 @@ export function App() {
   const [loginLogoConfig, setLoginLogoConfig] = useState<LoginLogoConfig>(DEFAULT_LOGIN_LOGO_CONFIG);
   const [navLogoConfig, setNavLogoConfig] = useState<NavLogoConfig>({ width: 120 });
   const [faviconConfig, setFaviconConfig] = useState<FaviconConfig>({});
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "1");
 
   const snapshotsByHost = useMemo(() => new Map(hosts.map((host) => [host.hostId, host])), [hosts]);
   const alertsCount = hosts.reduce((total, host) => total + host.alerts.length, 0);
@@ -668,9 +671,17 @@ export function App() {
     );
   }
 
+  function toggleSidebar() {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
+      return next;
+    });
+  }
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
+    <main className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+      <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
         <div className="brand">
           {navLogoConfig.dataUrl ? (
             <div className="brand-with-logo">
@@ -681,13 +692,20 @@ export function App() {
           ) : (
             <>
               <Activity size={24} />
-              <div>
+              <div className="brand-text">
                 <strong>Tek Map</strong>
                 <span>{hosts.length} hosts sincronizados</span>
                 <small>{appVersion ? `v${appVersion.version} · ${appVersion.build}` : ""}</small>
               </div>
             </>
           )}
+          <button
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? "Expandir barra lateral" : "Recolher barra lateral"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
         <nav className="side-nav" aria-label="Principal">
@@ -697,6 +715,7 @@ export function App() {
               <button
                 key={item.id}
                 className={`nav-item ${activeSection === item.id ? "active" : ""}`}
+                title={sidebarCollapsed ? item.label : undefined}
                 onClick={() => {
                   setActiveSection(item.id);
                   if (item.id === "editor") {
@@ -725,9 +744,9 @@ export function App() {
 
         {error ? <p className="error">{error}</p> : null}
 
-        <button className="logout-button" onClick={handleLogout}>
+        <button className="logout-button" onClick={handleLogout} title={sidebarCollapsed ? "Sair" : undefined}>
           <LogOut size={18} />
-          Sair
+          <span>Sair</span>
         </button>
       </aside>
 
