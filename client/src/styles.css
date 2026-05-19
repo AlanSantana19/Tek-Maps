@@ -3269,3 +3269,35 @@ select {
   color: #e7eef2;
   text-align: center;
 }
+
+.totp-admin-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #273244;
+  border-radius: 8px;
+  background: #0b0d10;
+}
+
+.totp-admin-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.totp-admin-setup {
+  display: grid;
+  gap: 10px;
+}
+
+.totp-admin-setup img {
+  border-radius: 6px;
+  justify-self: start;
+}
+
+.totp-admin-setup p {
+  font-size: 13px;
+  margin: 0;
+  color: #9ca3af;
+}

@@ -47,6 +47,15 @@ export class AccessUserRepository {
     return result.rows.map(mapUser);
   }
 
+  async getById(id: string): Promise<AccessUserRecord | null> {
+    await this.ensureColumns();
+    const result = await this.db.query(
+      "SELECT id, name, email, role, active, totp_enabled, created_at FROM access_users WHERE id = $1",
+      [id]
+    );
+    return result.rows[0] ? mapUser(result.rows[0]) : null;
+  }
+
   async getByEmail(email: string): Promise<AccessUserRecord | null> {
     await this.ensureColumns();
     const result = await this.db.query(

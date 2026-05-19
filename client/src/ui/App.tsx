@@ -50,6 +50,7 @@ import {
   enableTotp,
   disableTotp,
   resetUserTotp,
+  generateUserTotp,
   addGroupMember,
   apiGet,
   createAccessGroup,
@@ -3280,6 +3281,8 @@ function AdminUsersTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [totpSetup, setTotpSetup] = useState<{ qrDataUrl: string; backupCodes: string[] } | null>(null);
+  const [totpBusy, setTotpBusy] = useState(false);
 
   useEffect(() => {
     void apiGet<AccessUser[]>("/api/admin/users").then(setUsers).catch(() => setStatus("Nao foi possivel carregar usuarios."));
@@ -3299,22 +3302,49 @@ function AdminUsersTab() {
 
       const created = await createAccessUser(form);
       setUsers((current) => [created, ...current]);
-      resetForm();
-      setStatus("Usuario criado.");
+      setEditingId(created.id);
+      setForm({ name: created.name, email: created.email, role: created.role, active: created.active, password: "" });
+      setStatus("Usuario criado. Configure o 2FA abaixo se necessario.");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Falha ao salvar usuario.");
     }
+  }
+
+  async function handleActivateTotp(userId: string) {
+    setTotpBusy(true);
+    try {
+      const data = await generateUserTotp(userId);
+      const qrDataUrl = await QRCode.toDataURL(data.otpauth_uri, { width: 200 });
+      setTotpSetup({ qrDataUrl, backupCodes: data.backup_codes });
+      setUsers((current) => current.map((u) => u.id === userId ? { ...u, totpEnabled: true } : u));
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao ativar 2FA.");
+    } finally { setTotpBusy(false); }
+  }
+
+  async function handleDisableTotp(userId: string) {
+    setTotpBusy(true);
+    setTotpSetup(null);
+    try {
+      await resetUserTotp(userId);
+      setUsers((current) => current.map((u) => u.id === userId ? { ...u, totpEnabled: false } : u));
+      setStatus("2FA desativado.");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao desativar 2FA.");
+    } finally { setTotpBusy(false); }
   }
 
   function handleEdit(user: AccessUser) {
     setEditingId(user.id);
     setForm({ name: user.name, email: user.email, role: user.role, active: user.active, password: "" });
     setStatus(null);
+    setTotpSetup(null);
   }
 
   function resetForm() {
     setEditingId(null);
     setForm({ name: "", email: "", role: "viewer", active: true, password: "" });
+    setTotpSetup(null);
   }
 
   async function handleResetPassword(user: AccessUser) {
@@ -3402,6 +3432,44 @@ function AdminUsersTab() {
           <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
           Acesso ativo
         </label>
+        {editingId ? (() => {
+          const editingUser = users.find((u) => u.id === editingId);
+          const isTotpActive = editingUser?.totpEnabled ?? false;
+          return (
+            <div className="totp-admin-section">
+              <div className="totp-admin-header">
+                <Shield size={15} />
+                <strong>Autenticacao em dois fatores</strong>
+                <span className={`state-pill ${isTotpActive ? "active" : ""}`} style={{ marginLeft: "auto" }}>
+                  {isTotpActive ? "Ativo" : "Inativo"}
+                </span>
+              </div>
+              {totpSetup ? (
+                <div className="totp-admin-setup">
+                  <p>Escaneie o QR code no Google Authenticator e guarde os codigos de recuperacao:</p>
+                  <img src={totpSetup.qrDataUrl} alt="QR Code 2FA" />
+                  <div className="totp-backup-codes">
+                    {totpSetup.backupCodes.map((c) => <code key={c}>{c}</code>)}
+                  </div>
+                  <button type="button" className="secondary-button" onClick={() => setTotpSetup(null)}>Fechar</button>
+                </div>
+              ) : (
+                <div className="action-row">
+                  <button type="button" className="secondary-button" disabled={totpBusy} onClick={() => void handleActivateTotp(editingId)}>
+                    <Shield size={15} />
+                    {isTotpActive ? "Reconfigurar 2FA" : "Ativar 2FA"}
+                  </button>
+                  {isTotpActive && (
+                    <button type="button" className="secondary-button" disabled={totpBusy} onClick={() => void handleDisableTotp(editingId)}>
+                      Desativar 2FA
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })() : null}
+
         <div className="action-row">
           {editingId ? (
             <button className="secondary-button" type="button" onClick={resetForm}>

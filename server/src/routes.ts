@@ -749,6 +749,22 @@ export function createRoutes(
     }
   });
 
+  router.post("/admin/users/:id/totp", async (req, res, next) => {
+    try {
+      const targetUser = await users.getById(req.params.id);
+      if (!targetUser) { res.status(404).json({ error: "not_found" }); return; }
+      const secret = otp.generateSecret();
+      const backupCodes = Array.from({ length: 8 }, () => crypto.randomBytes(5).toString("hex"));
+      const hashedCodes = backupCodes.map((c) => crypto.createHash("sha256").update(c).digest("hex"));
+      await users.saveTotpPending(targetUser.id, secret, hashedCodes);
+      await users.enableTotp(targetUser.id);
+      const otpauthUri = otp.generateURI({ label: targetUser.email, issuer: "Tek Map", secret });
+      res.json({ otpauth_uri: otpauthUri, backup_codes: backupCodes });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.delete("/admin/users/:id/totp", async (req, res, next) => {
     try {
       await users.disableTotp(req.params.id);

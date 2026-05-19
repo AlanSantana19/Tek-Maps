@@ -184,6 +184,10 @@ export async function resetUserTotp(id: string): Promise<void> {
   return apiDelete(`/api/admin/users/${id}/totp`);
 }
 
+export async function generateUserTotp(id: string): Promise<{ otpauth_uri: string; backup_codes: string[] }> {
+  return apiSend<{ otpauth_uri: string; backup_codes: string[] }>(`/api/admin/users/${id}/totp`, "POST", {});
+}
+
 export async function resetAccessUserPassword(id: string, password: string) {
   return apiSend<AccessUser>(`/api/admin/users/${id}/password`, "PATCH", { password });
 }
