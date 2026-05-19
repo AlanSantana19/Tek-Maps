@@ -3301,19 +3301,15 @@ select {
   color: #9ca3af;
   margin: 0;
   text-align: center;
+  line-height: 1.5;
 }
 
 .totp-code-input {
-  font-size: 28px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.35em !important;
-  text-align: center !important;
-  padding: 14px 12px !important;
-  border: 2px solid #3b82f6 !important;
-  border-radius: 10px !important;
-  background: #0b0d10 !important;
-  color: #e7eef2 !important;
-  caret-color: #3b82f6;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  text-align: center;
+  padding: 14px 12px;
 }
 
 .totp-backup-codes {

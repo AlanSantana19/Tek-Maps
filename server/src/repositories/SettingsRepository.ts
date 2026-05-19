@@ -13,6 +13,7 @@ export interface StoredZabbixConfig {
 
 export interface LoginLogoConfig {
   dataUrl?: string;
+  title?: string;
   width: number;
   offsetX: number;
   offsetY: number;
@@ -23,6 +24,7 @@ export interface LoginLogoConfig {
 
 export interface NavLogoConfig {
   dataUrl?: string;
+  title?: string;
   width: number;
   updatedAt?: string;
 }
@@ -279,6 +281,7 @@ function mapZabbixServer(row: any): StoredZabbixConfig {
 function normalizeNavLogoConfig(input: Partial<NavLogoConfig>): NavLogoConfig {
   return {
     dataUrl: typeof input.dataUrl === "string" && input.dataUrl.startsWith("data:image/") ? input.dataUrl : undefined,
+    title: typeof input.title === "string" && input.title.trim() ? input.title.trim() : undefined,
     width: clampNumber(input.width, 40, 240, DEFAULT_NAV_LOGO_CONFIG.width),
     updatedAt: input.updatedAt
   };
@@ -287,6 +290,7 @@ function normalizeNavLogoConfig(input: Partial<NavLogoConfig>): NavLogoConfig {
 function normalizeLoginLogoConfig(input: Partial<LoginLogoConfig>): LoginLogoConfig {
   return {
     dataUrl: typeof input.dataUrl === "string" && input.dataUrl.startsWith("data:image/") ? input.dataUrl : undefined,
+    title: typeof input.title === "string" && input.title.trim() ? input.title.trim() : undefined,
     width: clampNumber(input.width, 48, 240, DEFAULT_LOGIN_LOGO_CONFIG.width),
     offsetX: clampNumber(input.offsetX, -120, 120, DEFAULT_LOGIN_LOGO_CONFIG.offsetX),
     offsetY: clampNumber(input.offsetY, -80, 80, DEFAULT_LOGIN_LOGO_CONFIG.offsetY),
