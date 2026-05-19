@@ -1298,7 +1298,6 @@ function Dashboard({
                   <span className="activity-dot online" />
                   <span className="activity-name">{user.name}</span>
                   <span className="activity-action">{user.ip}</span>
-                  <span className="activity-time">desde {new Date(user.connectedAt).toLocaleTimeString()}</span>
                 </div>
               ))
             )}
@@ -1311,7 +1310,7 @@ function Dashboard({
               <p className="empty-state">Nenhuma atividade registrada.</p>
             ) : (
               activityLog.slice(0, 30).map((entry) => (
-                <div className="activity-row" key={entry.id}>
+                <div className="activity-row activity-row--log" key={entry.id}>
                   <span className={`activity-dot ${entry.action === "login" ? "login" : "edit"}`} />
                   <span className="activity-name">{entry.userName}</span>
                   <span className="activity-action">{entry.action === "login" ? "fez login" : `salvou "${entry.detail ?? "mapa"}"`}</span>

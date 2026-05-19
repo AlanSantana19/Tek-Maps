@@ -411,7 +411,7 @@ select {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 10px auto 1fr auto;
+  grid-template-columns: 10px auto 1fr;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -431,6 +431,10 @@ select {
 .activity-dot.login { background: #60a5fa; }
 .activity-dot.edit { background: #facc15; }
 .activity-dot.online { background: #4ade80; }
+
+.activity-row--log {
+  grid-template-columns: 10px auto 1fr auto;
+}
 
 .activity-name { font-weight: 500; }
 .activity-action { color: #91a1a9; }
