@@ -11,6 +11,7 @@ export interface AccessUserRecord {
   email: string;
   role: "admin" | "operator" | "viewer";
   active: boolean;
+  totpEnabled: boolean;
   createdAt?: string;
 }
 
@@ -32,16 +33,24 @@ export interface UpdateAccessUser {
 export class AccessUserRepository {
   constructor(private readonly db: pg.Pool) {}
 
+  private async ensureColumns() {
+    await this.db.query("ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_secret TEXT");
+    await this.db.query("ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false");
+    await this.db.query("ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT[] NOT NULL DEFAULT '{}'");
+  }
+
   async list(): Promise<AccessUserRecord[]> {
+    await this.ensureColumns();
     const result = await this.db.query(
-      "SELECT id, name, email, role, active, created_at FROM access_users ORDER BY created_at DESC"
+      "SELECT id, name, email, role, active, totp_enabled, created_at FROM access_users ORDER BY created_at DESC"
     );
     return result.rows.map(mapUser);
   }
 
   async getByEmail(email: string): Promise<AccessUserRecord | null> {
+    await this.ensureColumns();
     const result = await this.db.query(
-      `SELECT id, name, email, role, active, created_at
+      `SELECT id, name, email, role, active, totp_enabled, created_at
        FROM access_users
        WHERE lower(email) = lower($1)
          AND active = true`,
@@ -51,12 +60,13 @@ export class AccessUserRepository {
   }
 
   async create(user: NewAccessUser): Promise<AccessUserRecord> {
+    await this.ensureColumns();
     const id = crypto.randomUUID();
     const passwordHash = user.password ? await bcrypt.hash(user.password, BCRYPT_ROUNDS) : null;
     const result = await this.db.query(
       `INSERT INTO access_users (id, name, email, role, active, password_hash, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, now(), now())
-       RETURNING id, name, email, role, active, created_at`,
+       RETURNING id, name, email, role, active, totp_enabled, created_at`,
       [id, user.name, user.email.toLowerCase(), user.role, user.active, passwordHash]
     );
     return mapUser(result.rows[0]);
@@ -71,7 +81,7 @@ export class AccessUserRepository {
            active = $5,
            updated_at = now()
        WHERE id = $1
-       RETURNING id, name, email, role, active, created_at`,
+       RETURNING id, name, email, role, active, totp_enabled, created_at`,
       [id, user.name, user.email.toLowerCase(), user.role, user.active]
     );
     return result.rows[0] ? mapUser(result.rows[0]) : null;
@@ -88,7 +98,7 @@ export class AccessUserRepository {
        SET password_hash = $2,
            updated_at = now()
        WHERE id = $1
-       RETURNING id, name, email, role, active, created_at`,
+       RETURNING id, name, email, role, active, totp_enabled, created_at`,
       [id, await bcrypt.hash(password, BCRYPT_ROUNDS)]
     );
     return result.rows[0] ? mapUser(result.rows[0]) : null;
@@ -96,7 +106,7 @@ export class AccessUserRepository {
 
   async verify(login: string, password: string): Promise<AccessUserRecord | null> {
     const result = await this.db.query(
-      `SELECT id, name, email, role, active, password_hash, created_at
+      `SELECT id, name, email, role, active, password_hash, totp_enabled, created_at
        FROM access_users
        WHERE (lower(email) = lower($1) OR lower(name) = lower($1))
          AND active = true`,
@@ -125,6 +135,51 @@ export class AccessUserRepository {
 
     return valid ? mapUser(row) : null;
   }
+
+  async getTotpData(userId: string): Promise<{ secret: string | null; enabled: boolean; backupCodes: string[] }> {
+    const result = await this.db.query(
+      "SELECT totp_secret, totp_enabled, totp_backup_codes FROM access_users WHERE id = $1",
+      [userId]
+    );
+    const row = result.rows[0];
+    if (!row) return { secret: null, enabled: false, backupCodes: [] };
+    return { secret: row.totp_secret, enabled: row.totp_enabled, backupCodes: row.totp_backup_codes ?? [] };
+  }
+
+  async saveTotpPending(userId: string, secret: string, hashedBackupCodes: string[]): Promise<void> {
+    await this.db.query(
+      "UPDATE access_users SET totp_secret = $2, totp_backup_codes = $3, updated_at = now() WHERE id = $1",
+      [userId, secret, hashedBackupCodes]
+    );
+  }
+
+  async enableTotp(userId: string): Promise<void> {
+    await this.db.query(
+      "UPDATE access_users SET totp_enabled = true, updated_at = now() WHERE id = $1",
+      [userId]
+    );
+  }
+
+  async disableTotp(userId: string): Promise<void> {
+    await this.db.query(
+      "UPDATE access_users SET totp_secret = NULL, totp_enabled = false, totp_backup_codes = '{}', updated_at = now() WHERE id = $1",
+      [userId]
+    );
+  }
+
+  async consumeBackupCode(userId: string, code: string): Promise<boolean> {
+    const hashed = crypto.createHash("sha256").update(code).digest("hex");
+    const result = await this.db.query(
+      `UPDATE access_users
+       SET totp_backup_codes = array_remove(totp_backup_codes, $2),
+           updated_at = now()
+       WHERE id = $1
+         AND $2 = ANY(totp_backup_codes)
+       RETURNING id`,
+      [userId, hashed]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
 }
 
 function mapUser(row: any): AccessUserRecord {
@@ -134,6 +189,7 @@ function mapUser(row: any): AccessUserRecord {
     email: row.email,
     role: row.role,
     active: row.active,
+    totpEnabled: row.totp_enabled ?? false,
     createdAt: row.created_at?.toISOString?.() ?? row.created_at
   };
 }

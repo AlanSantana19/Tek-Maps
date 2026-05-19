@@ -15,7 +15,11 @@ export function logout() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-export async function login(username: string, password: string) {
+export type LoginResult =
+  | { type: "ok"; token: string }
+  | { type: "totp_required"; challengeToken: string };
+
+export async function login(username: string, password: string): Promise<LoginResult> {
   const response = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -24,9 +28,49 @@ export async function login(username: string, password: string) {
   if (!response.ok) {
     throw new Error("Credenciais invalidas");
   }
+  const payload = await response.json() as { token?: string; totp_required?: boolean; challenge_token?: string };
+  if (payload.totp_required && payload.challenge_token) {
+    return { type: "totp_required", challengeToken: payload.challenge_token };
+  }
+  setToken(payload.token!);
+  return { type: "ok", token: payload.token! };
+}
+
+export async function loginTotp(challengeToken: string, code: string): Promise<string> {
+  const response = await fetch("/api/auth/totp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ challenge_token: challengeToken, code })
+  });
+  if (!response.ok) {
+    throw new Error("Codigo invalido");
+  }
   const payload = await response.json() as { token: string };
   setToken(payload.token);
   return payload.token;
+}
+
+export async function getTotpStatus(): Promise<{ enabled: boolean }> {
+  return apiGet<{ enabled: boolean }>("/api/me/totp");
+}
+
+export async function setupTotp(): Promise<{ secret: string; otpauth_uri: string; backup_codes: string[] }> {
+  return apiSend<{ secret: string; otpauth_uri: string; backup_codes: string[] }>("/api/me/totp/setup", "POST", {});
+}
+
+export async function enableTotp(code: string): Promise<void> {
+  await apiSend<{ enabled: boolean }>("/api/me/totp/enable", "POST", { code });
+}
+
+export async function disableTotp(code: string): Promise<void> {
+  const response = await fetch("/api/me/totp", {
+    method: "DELETE",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ code })
+  });
+  if (!response.ok) {
+    throw new Error("Codigo invalido");
+  }
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

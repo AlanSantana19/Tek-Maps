@@ -1,3 +1,4 @@
+import QRCode from "qrcode";
 import {
   Activity,
   ArrowLeft,
@@ -43,6 +44,11 @@ import { Background, BackgroundVariant, ReactFlow, useEdgesState, useNodesState 
 import { LinkEdge, SnapshotsContext } from "./LinkEdge";
 import {
   AUTH_EXPIRED_EVENT,
+  loginTotp,
+  getTotpStatus,
+  setupTotp,
+  enableTotp,
+  disableTotp,
   addGroupMember,
   apiGet,
   createAccessGroup,
@@ -89,7 +95,7 @@ const nodeTypes = { device: DeviceNode };
 const edgeTypes = { link: LinkEdge };
 const EMPTY_SNAPSHOTS = new Map<string, DeviceSnapshot>();
 
-type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding";
+type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding" | "account";
 
 type DeviceNodeData = {
   label: string;
@@ -250,6 +256,8 @@ export function App() {
   const [editorMode, setEditorMode] = useState<"maps" | "canvas">("maps");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState("");
   const [hosts, setHosts] = useState<DeviceSnapshot[]>([]);
   const [wsConnected, setWsConnected] = useState(true);
   const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>([]);
@@ -373,10 +381,29 @@ export function App() {
     event.preventDefault();
     setError(null);
     try {
-      setLocalToken(await login(username, password));
-      setPassword("");
+      const result = await login(username, password);
+      if (result.type === "totp_required") {
+        setTotpChallenge(result.challengeToken);
+        setPassword("");
+      } else {
+        setLocalToken(result.token);
+        setPassword("");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login falhou");
+    }
+  }
+
+  async function handleTotpLogin(event: FormEvent) {
+    event.preventDefault();
+    if (!totpChallenge) return;
+    setError(null);
+    try {
+      setLocalToken(await loginTotp(totpChallenge, totpCode));
+      setTotpChallenge(null);
+      setTotpCode("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Codigo invalido");
     }
   }
 
@@ -664,6 +691,33 @@ export function App() {
   }
 
   if (!token) {
+    if (totpChallenge) {
+      return (
+        <main className="login-screen">
+          <form className="login-panel" onSubmit={handleTotpLogin} style={{ background: loginLogoConfig.backgroundColor }}>
+            <LoginLogoPreview config={loginLogoConfig} />
+            <h1 style={{ color: loginLogoConfig.titleColor }}>Tek Map</h1>
+            <p className="login-totp-hint">Digite o codigo de 6 digitos do Google Authenticator.</p>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9 ]*"
+              placeholder="000 000"
+              value={totpCode}
+              onChange={(event) => setTotpCode(event.target.value)}
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={7}
+            />
+            <button type="submit">Verificar</button>
+            <button type="button" className="secondary-button" onClick={() => { setTotpChallenge(null); setError(null); }}>
+              Voltar
+            </button>
+            {error ? <p className="error">{error}</p> : null}
+          </form>
+        </main>
+      );
+    }
     return (
       <main className="login-screen">
         <form className="login-panel" onSubmit={handleLogin} style={{ background: loginLogoConfig.backgroundColor }}>
@@ -763,6 +817,15 @@ export function App() {
 
         {error ? <p className="error">{error}</p> : null}
 
+        <button
+          className={`nav-item account-nav-item${activeSection === "account" ? " active" : ""}`}
+          title={sidebarCollapsed ? "Conta" : undefined}
+          onClick={() => setActiveSection("account")}
+        >
+          <Shield size={18} />
+          <span>Conta</span>
+        </button>
+
         <button className="logout-button" onClick={handleLogout} title={sidebarCollapsed ? "Sair" : undefined}>
           <LogOut size={18} />
           <span>Sair</span>
@@ -842,6 +905,7 @@ export function App() {
           />
         ) : null}
         {activeSection === "admin" ? <AdminUsers /> : null}
+        {activeSection === "account" ? <AccountPanel /> : null}
       </section>
     </main>
   );
@@ -4540,4 +4604,161 @@ function inferDeviceType(name: string): Topology["nodes"][number]["type"] {
   if (/server|srv/i.test(name)) return "server";
   if (/switch|sw-/i.test(name)) return "switch";
   return "unknown";
+}
+
+function AccountPanel() {
+  const [totpEnabled, setTotpEnabled] = useState<boolean | null>(null);
+  const [step, setStep] = useState<"idle" | "setup" | "confirm" | "backup" | "disable">("idle");
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [otpauthUri, setOtpauthUri] = useState<string | null>(null);
+  const [secret, setSecret] = useState<string | null>(null);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    void getTotpStatus().then((r) => setTotpEnabled(r.enabled)).catch(() => setTotpEnabled(false));
+  }, []);
+
+  async function startSetup() {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const data = await setupTotp();
+      const dataUrl = await QRCode.toDataURL(data.otpauth_uri, { width: 200 });
+      setQrDataUrl(dataUrl);
+      setOtpauthUri(data.otpauth_uri);
+      setSecret(data.secret);
+      setBackupCodes(data.backup_codes);
+      setStep("setup");
+    } catch {
+      setStatus("Falha ao gerar QR code.");
+    } finally { setLoading(false); }
+  }
+
+  async function confirmEnable() {
+    if (!code) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      await enableTotp(code.replace(/\s/g, ""));
+      setTotpEnabled(true);
+      setStep("backup");
+      setCode("");
+    } catch {
+      setStatus("Codigo invalido. Tente novamente.");
+    } finally { setLoading(false); }
+  }
+
+  async function confirmDisable() {
+    if (!code) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      await disableTotp(code.replace(/\s/g, ""));
+      setTotpEnabled(false);
+      setStep("idle");
+      setCode("");
+      setStatus("2FA desativado com sucesso.");
+    } catch {
+      setStatus("Codigo invalido. Tente novamente.");
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <section className="page">
+      <PageHeader title="Conta" subtitle="Gerencie a seguranca da sua conta." />
+      <div className="branding-sections">
+        <div className="branding-block">
+          <div className="branding-block-header">
+            <KeyRound size={16} />
+            <div>
+              <strong>Autenticacao em dois fatores (2FA)</strong>
+              <span>Use o Google Authenticator para gerar codigos de acesso.</span>
+            </div>
+          </div>
+
+          {totpEnabled === null && <p className="form-status">Carregando...</p>}
+
+          {totpEnabled === false && step === "idle" && (
+            <div className="branding-form">
+              <p style={{ marginBottom: 12 }}>O 2FA esta <strong>desativado</strong>. Ative para maior seguranca.</p>
+              <button className="save-button" type="button" onClick={() => void startSetup()} disabled={loading}>
+                Ativar 2FA
+              </button>
+              {status ? <p className="form-status">{status}</p> : null}
+            </div>
+          )}
+
+          {totpEnabled === false && step === "setup" && (
+            <div className="branding-form">
+              <p>1. Escaneie o QR code com o Google Authenticator:</p>
+              {qrDataUrl && <img src={qrDataUrl} alt="QR Code 2FA" style={{ display: "block", margin: "12px 0", borderRadius: 8 }} />}
+              <details style={{ marginBottom: 12 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--text-muted, #9ca3af)" }}>Ou insira o codigo manualmente</summary>
+                <code style={{ display: "block", marginTop: 6, fontSize: 13, wordBreak: "break-all" }}>{secret}</code>
+              </details>
+              <p>2. Digite o codigo gerado pelo app para confirmar:</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="000 000"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                maxLength={7}
+                autoFocus
+              />
+              <div className="action-row">
+                <button className="secondary-button" type="button" onClick={() => { setStep("idle"); setCode(""); setStatus(null); }}>Cancelar</button>
+                <button className="save-button" type="button" onClick={() => void confirmEnable()} disabled={loading || !code}>Confirmar</button>
+              </div>
+              {status ? <p className="form-status error">{status}</p> : null}
+            </div>
+          )}
+
+          {step === "backup" && (
+            <div className="branding-form">
+              <p><strong>2FA ativado com sucesso!</strong></p>
+              <p style={{ marginTop: 8 }}>Salve estes codigos de recuperacao em um lugar seguro. Cada um so pode ser usado uma vez:</p>
+              <div className="totp-backup-codes">
+                {backupCodes.map((c) => <code key={c}>{c}</code>)}
+              </div>
+              <button className="save-button" type="button" style={{ marginTop: 12 }} onClick={() => setStep("idle")}>Concluir</button>
+            </div>
+          )}
+
+          {totpEnabled === true && step === "idle" && (
+            <div className="branding-form">
+              <p style={{ marginBottom: 12 }}>O 2FA esta <strong>ativado</strong>.</p>
+              <button className="secondary-button" type="button" onClick={() => { setStep("disable"); setCode(""); setStatus(null); }}>
+                Desativar 2FA
+              </button>
+              {status ? <p className="form-status">{status}</p> : null}
+            </div>
+          )}
+
+          {totpEnabled === true && step === "disable" && (
+            <div className="branding-form">
+              <p>Digite um codigo do Google Authenticator (ou codigo de recuperacao) para desativar o 2FA:</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="000 000"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                maxLength={10}
+                autoFocus
+              />
+              <div className="action-row">
+                <button className="secondary-button" type="button" onClick={() => { setStep("idle"); setCode(""); setStatus(null); }}>Cancelar</button>
+                <button className="save-button" type="button" onClick={() => void confirmDisable()} disabled={loading || !code}>Desativar</button>
+              </div>
+              {status ? <p className="form-status error">{status}</p> : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }

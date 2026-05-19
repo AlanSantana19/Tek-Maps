@@ -3244,3 +3244,33 @@ select {
   border-top: 1px solid #1e2c3a;
   margin: 3px 0;
 }
+
+/* ── 2FA / Account ──────────────────────────────────────────────────────── */
+.account-nav-item {
+  margin-top: auto;
+  margin-bottom: 0;
+}
+
+.login-totp-hint {
+  font-size: 13px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.totp-backup-codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 12px;
+  background: #0b0d10;
+  border: 1px solid #273244;
+  border-radius: 8px;
+}
+
+.totp-backup-codes code {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: #e7eef2;
+  text-align: center;
+}

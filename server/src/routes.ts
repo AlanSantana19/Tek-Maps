@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import express from "express";
+import { OTP } from "otplib";
 import { z } from "zod";
-import { type AuthRequest, requireAuth, signUserToken } from "./auth.js";
+import { type AuthRequest, requireAuth, signChallengeToken, signUserToken, verifyChallengeToken } from "./auth.js";
 import { appVersion } from "./version.js";
 import type { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import type { AccessUserRepository } from "./repositories/AccessUserRepository.js";
@@ -166,6 +168,7 @@ export function createRoutes(
   mapPermissions: MapPermissionRepository
 ) {
   const router = express.Router();
+  const otp = new OTP();
 
   router.get("/health", (_req, res) => res.json({ ok: true }));
   router.get("/version", (_req, res) => res.json(appVersion));
@@ -211,6 +214,11 @@ export function createRoutes(
         return;
       }
 
+      if (accessUser.totpEnabled) {
+        res.json({ totp_required: true, challenge_token: signChallengeToken({ id: accessUser.id, email: accessUser.email, role: accessUser.role }) });
+        return;
+      }
+
       res.json({ token: signUserToken({ email: accessUser.email, role: accessUser.role }) });
     })().catch((error) => {
       res.status(500).json({ error: "internal_error" });
@@ -218,7 +226,112 @@ export function createRoutes(
     });
   });
 
+  router.post("/auth/totp", (req, res) => {
+    const parsed = z.object({
+      challenge_token: z.string(),
+      code: z.string().min(1)
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_payload" });
+      return;
+    }
+
+    void (async () => {
+      const challenge = verifyChallengeToken(parsed.data.challenge_token);
+      if (!challenge) {
+        res.status(401).json({ error: "invalid_challenge" });
+        return;
+      }
+
+      const totp = await users.getTotpData(challenge.uid);
+      if (!totp.enabled || !totp.secret) {
+        res.status(401).json({ error: "totp_not_configured" });
+        return;
+      }
+
+      const code = parsed.data.code.replace(/\s/g, "");
+      const validTotp = otp.verifySync({ token: code, secret: totp.secret }).valid;
+      const validBackup = validTotp ? false : await users.consumeBackupCode(challenge.uid, code);
+
+      if (!validTotp && !validBackup) {
+        res.status(401).json({ error: "invalid_totp" });
+        return;
+      }
+
+      res.json({ token: signUserToken({ email: challenge.sub, role: challenge.role }) });
+    })().catch((error) => {
+      res.status(500).json({ error: "internal_error" });
+      req.log?.error({ error }, "totp verification failed");
+    });
+  });
+
   router.use(requireAuth);
+
+  router.get("/me/totp", async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub ? (await users.getByEmail(req.user.sub))?.id : undefined;
+      if (!userId) { res.status(404).json({ error: "user_not_found" }); return; }
+      const totp = await users.getTotpData(userId);
+      res.json({ enabled: totp.enabled });
+    } catch (err) { next(err); }
+  });
+
+  router.post("/me/totp/setup", async (req: AuthRequest, res, next) => {
+    try {
+      const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+      if (!currentUser) { res.status(404).json({ error: "user_not_found" }); return; }
+
+      const secret = otp.generateSecret();
+      const backupCodes = Array.from({ length: 8 }, () => crypto.randomBytes(5).toString("hex"));
+      const hashedCodes = backupCodes.map((c) => crypto.createHash("sha256").update(c).digest("hex"));
+
+      await users.saveTotpPending(currentUser.id, secret, hashedCodes);
+
+      const otpauthUri = otp.generateURI({ label: currentUser.email, issuer: "Tek Map", secret });
+      res.json({ secret, otpauth_uri: otpauthUri, backup_codes: backupCodes });
+    } catch (err) { next(err); }
+  });
+
+  router.post("/me/totp/enable", async (req: AuthRequest, res, next) => {
+    const parsed = z.object({ code: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "invalid_payload" }); return; }
+
+    try {
+      const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+      if (!currentUser) { res.status(404).json({ error: "user_not_found" }); return; }
+
+      const totp = await users.getTotpData(currentUser.id);
+      if (!totp.secret) { res.status(400).json({ error: "totp_not_setup" }); return; }
+
+      const valid = otp.verifySync({ token: parsed.data.code.replace(/\s/g, ""), secret: totp.secret }).valid;
+      if (!valid) { res.status(401).json({ error: "invalid_totp" }); return; }
+
+      await users.enableTotp(currentUser.id);
+      res.json({ enabled: true });
+    } catch (err) { next(err); }
+  });
+
+  router.delete("/me/totp", async (req: AuthRequest, res, next) => {
+    const parsed = z.object({ code: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "invalid_payload" }); return; }
+
+    try {
+      const currentUser = req.user?.sub ? await users.getByEmail(req.user.sub) : null;
+      if (!currentUser) { res.status(404).json({ error: "user_not_found" }); return; }
+
+      const totp = await users.getTotpData(currentUser.id);
+      if (!totp.enabled || !totp.secret) { res.status(400).json({ error: "totp_not_enabled" }); return; }
+
+      const code = parsed.data.code.replace(/\s/g, "");
+      const validTotp = otp.verifySync({ token: code, secret: totp.secret }).valid;
+      const validBackup = validTotp ? false : await users.consumeBackupCode(currentUser.id, code);
+
+      if (!validTotp && !validBackup) { res.status(401).json({ error: "invalid_totp" }); return; }
+
+      await users.disableTotp(currentUser.id);
+      res.json({ enabled: false });
+    } catch (err) { next(err); }
+  });
 
   router.get("/me/permissions", async (req: AuthRequest, res, next) => {
     try {

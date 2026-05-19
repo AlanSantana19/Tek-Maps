@@ -44,9 +44,16 @@ CREATE TABLE IF NOT EXISTS access_users (
   role TEXT NOT NULL CHECK (role IN ('admin', 'operator', 'viewer')),
   active BOOLEAN NOT NULL DEFAULT true,
   password_hash TEXT,
+  totp_secret TEXT,
+  totp_enabled BOOLEAN NOT NULL DEFAULT false,
+  totp_backup_codes TEXT[] NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
+ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT[] NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS custom_icons (
   id UUID PRIMARY KEY,
