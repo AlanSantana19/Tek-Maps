@@ -28,6 +28,16 @@ export function verifyChallengeToken(token: string): { sub: string; uid: string;
   }
 }
 
+export function verifyToken(token: string): { sub: string; role: "admin" | "operator" | "viewer" } | null {
+  try {
+    const payload = jwt.verify(token, config.JWT_SECRET) as AuthRequest["user"] & { totp_pending?: boolean };
+    if (payload?.totp_pending) return null;
+    return payload ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   const header = req.header("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;

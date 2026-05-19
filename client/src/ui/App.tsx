@@ -56,12 +56,14 @@ import {
   createAccessGroup,
   createAccessUser,
   createCustomIcon,
+  getActivityLog,
   getAppVersion,
   getCurrentUserPermissions,
   getLoginLogoConfig,
   getFaviconConfig,
   getNavLogoConfig,
   getMapPermissionAdminState,
+  getOnlineUsers,
   getToken,
   getZabbixServerHosts,
   inspectZabbixItems,
@@ -90,7 +92,7 @@ import {
   updateUserGranularPermissions,
   updateZabbixConfig
 } from "../api";
-import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
+import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OnlineUser, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
 import { DeviceNode } from "./DeviceNode";
 
 const nodeTypes = { device: DeviceNode };
@@ -1262,10 +1264,19 @@ function Dashboard({
   alertsCount: number;
   downHosts: number;
 }) {
-  const syncTimes = hosts
-    .map((host) => host.syncedAt)
-    .sort();
+  const syncTimes = hosts.map((host) => host.syncedAt).sort();
   const latestSync = syncTimes[syncTimes.length - 1];
+  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+
+  useEffect(() => {
+    void getActivityLog().then(setActivityLog).catch(() => {});
+    void getOnlineUsers().then(setOnlineUsers).catch(() => {});
+    const interval = setInterval(() => {
+      void getOnlineUsers().then(setOnlineUsers).catch(() => {});
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <section className="page">
@@ -1277,6 +1288,41 @@ function Dashboard({
         <SummaryCard label="Alertas" value={alertsCount} tone={alertsCount ? "warning" : "ok"} />
         <SummaryCard label="Indisponiveis" value={downHosts} tone={downHosts ? "danger" : "ok"} />
         <SummaryCard label="Ultima sync" value={latestSync ? new Date(latestSync).toLocaleString() : "Sem dados"} />
+      </div>
+      <div className="dashboard-panels">
+        <section className="panel">
+          <h2>Online agora</h2>
+          <div className="activity-list">
+            {onlineUsers.length === 0 ? (
+              <p className="empty-state">Nenhum usuario conectado.</p>
+            ) : (
+              onlineUsers.map((user, i) => (
+                <div className="activity-row" key={`${user.email}-${i}`}>
+                  <span className="activity-dot online" />
+                  <span className="activity-name">{user.email}</span>
+                  <span className="activity-time">desde {new Date(user.connectedAt).toLocaleTimeString()}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+        <section className="panel">
+          <h2>Atividade recente</h2>
+          <div className="activity-list">
+            {activityLog.length === 0 ? (
+              <p className="empty-state">Nenhuma atividade registrada.</p>
+            ) : (
+              activityLog.slice(0, 30).map((entry) => (
+                <div className="activity-row" key={entry.id}>
+                  <span className={`activity-dot ${entry.action === "login" ? "login" : "edit"}`} />
+                  <span className="activity-name">{entry.userName}</span>
+                  <span className="activity-action">{entry.action === "login" ? "fez login" : `salvou "${entry.detail ?? "mapa"}"`}</span>
+                  <span className="activity-time">{new Date(entry.createdAt).toLocaleString()}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </div>
       <section className="panel">
         <h2>Eventos recentes</h2>

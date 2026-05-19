@@ -130,6 +130,18 @@ CREATE TABLE IF NOT EXISTS access_group_menu_permissions (
   PRIMARY KEY (group_id, menu_id)
 );
 
+CREATE TABLE IF NOT EXISTS activity_log (
+  id BIGSERIAL PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT,
+  ip TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_agm_user_id          ON access_group_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_agm_group_id         ON access_group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_agmp_group_id        ON access_group_map_permissions(group_id);

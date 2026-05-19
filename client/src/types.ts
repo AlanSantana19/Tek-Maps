@@ -286,3 +286,18 @@ export interface FaviconConfig {
   size?: number;
   updatedAt?: string;
 }
+
+export interface ActivityLogEntry {
+  id: number;
+  userEmail: string;
+  userName: string;
+  action: string;
+  detail?: string;
+  ip?: string;
+  createdAt: string;
+}
+
+export interface OnlineUser {
+  email: string;
+  connectedAt: string;
+}

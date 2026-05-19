@@ -10,6 +10,7 @@ import { logger } from "./logger.js";
 import { Hub } from "./realtime/Hub.js";
 import { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import { AccessUserRepository } from "./repositories/AccessUserRepository.js";
+import { ActivityRepository } from "./repositories/ActivityRepository.js";
 import { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import { MapPermissionRepository } from "./repositories/MapPermissionRepository.js";
 import { SettingsRepository } from "./repositories/SettingsRepository.js";
@@ -32,14 +33,17 @@ const accessUserRepository = new AccessUserRepository(pool);
 const accessGroupRepository = new AccessGroupRepository(pool);
 const customIconRepository = new CustomIconRepository(pool);
 const mapPermissionRepository = new MapPermissionRepository(pool);
-app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository, mapPermissionRepository));
+const activityRepository = new ActivityRepository(pool);
+
+const server = http.createServer(app);
+const hub = new Hub(server);
+
+app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository, mapPermissionRepository, activityRepository, hub));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ error }, "request failed");
   res.status(500).json({ error: "internal_error" });
 });
 
-const server = http.createServer(app);
-const hub = new Hub(server);
 const sync = new ZabbixSyncService(
   settingsRepository,
   cacheRepository,

@@ -4,8 +4,10 @@ import { OTP } from "otplib";
 import { z } from "zod";
 import { type AuthRequest, requireAuth, signChallengeToken, signUserToken, verifyChallengeToken } from "./auth.js";
 import { appVersion } from "./version.js";
+import type { Hub } from "./realtime/Hub.js";
 import type { AccessGroupRepository } from "./repositories/AccessGroupRepository.js";
 import type { AccessUserRepository } from "./repositories/AccessUserRepository.js";
+import type { ActivityRepository } from "./repositories/ActivityRepository.js";
 import type { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import type { MapPermissionRepository } from "./repositories/MapPermissionRepository.js";
 import type { SettingsRepository } from "./repositories/SettingsRepository.js";
@@ -165,7 +167,9 @@ export function createRoutes(
   users: AccessUserRepository,
   icons: CustomIconRepository,
   groups: AccessGroupRepository,
-  mapPermissions: MapPermissionRepository
+  mapPermissions: MapPermissionRepository,
+  activity: ActivityRepository,
+  hub: Hub
 ) {
   const router = express.Router();
   const otp = new OTP();
@@ -219,6 +223,7 @@ export function createRoutes(
         return;
       }
 
+      void activity.log({ userEmail: accessUser.email, userName: accessUser.name, action: "login", ip: req.ip }).catch(() => {});
       res.json({ token: signUserToken({ email: accessUser.email, role: accessUser.role }) });
     })().catch((error) => {
       res.status(500).json({ error: "internal_error" });
@@ -258,6 +263,10 @@ export function createRoutes(
         return;
       }
 
+      const totpUser = await users.getByEmail(challenge.sub);
+      if (totpUser) {
+        void activity.log({ userEmail: totpUser.email, userName: totpUser.name, action: "login", ip: req.ip }).catch(() => {});
+      }
       res.json({ token: signUserToken({ email: challenge.sub, role: challenge.role }) });
     })().catch((error) => {
       res.status(500).json({ error: "internal_error" });
@@ -1023,14 +1032,21 @@ export function createRoutes(
     }
   });
 
-  router.post("/topologies", async (req, res, next) => {
+  router.post("/topologies", async (req: AuthRequest, res, next) => {
     try {
       const parsed = topologySchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: "invalid_topology", details: parsed.error.flatten() });
         return;
       }
-      res.json(await topologies.upsert(parsed.data));
+      const saved = await topologies.upsert(parsed.data);
+      if (req.user?.sub) {
+        const actor = await users.getByEmail(req.user.sub);
+        if (actor) {
+          void activity.log({ userEmail: actor.email, userName: actor.name, action: "topology_saved", detail: parsed.data.name, ip: req.ip }).catch(() => {});
+        }
+      }
+      res.json(saved);
     } catch (error) {
       next(error);
     }
@@ -1066,7 +1082,14 @@ export function createRoutes(
           return;
         }
       }
-      res.json(await topologies.upsert(parsed.data));
+      const saved = await topologies.upsert(parsed.data);
+      if (req.user?.sub) {
+        const actor = await users.getByEmail(req.user.sub);
+        if (actor) {
+          void activity.log({ userEmail: actor.email, userName: actor.name, action: "topology_saved", detail: parsed.data.name, ip: req.ip }).catch(() => {});
+        }
+      }
+      res.json(saved);
     } catch (error) {
       next(error);
     }
@@ -1124,6 +1147,18 @@ export function createRoutes(
     } catch (error) {
       next(error);
     }
+  });
+
+  router.get("/activity/log", async (_req, res, next) => {
+    try {
+      res.json(await activity.list(100));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/activity/online", (_req, res) => {
+    res.json(hub.getOnlineUsers());
   });
 
   return router;

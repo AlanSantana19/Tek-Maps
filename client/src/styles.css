@@ -397,6 +397,45 @@ select {
   margin-bottom: 18px;
 }
 
+.dashboard-panels {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.activity-list {
+  display: grid;
+  gap: 6px;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 10px auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #202833;
+  border-radius: 6px;
+  background: #090b0f;
+  font-size: 13px;
+}
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+}
+
+.activity-dot.login { background: #60a5fa; }
+.activity-dot.edit { background: #facc15; }
+.activity-dot.online { background: #4ade80; }
+
+.activity-name { font-weight: 500; }
+.activity-action { color: #91a1a9; }
+.activity-time { color: #91a1a9; font-size: 12px; white-space: nowrap; }
+
 .summary-card,
 .panel {
   border: 1px solid #202833;
@@ -2930,7 +2969,8 @@ select {
   .admin-layout,
   .permission-layout,
   .branding-layout,
-  .summary-grid {
+  .summary-grid,
+  .dashboard-panels {
     grid-template-columns: 1fr;
   }
 

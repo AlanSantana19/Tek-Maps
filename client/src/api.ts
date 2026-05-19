@@ -1,4 +1,4 @@
-import type { AccessGroup, AccessGroupMember, AccessUser, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
+import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OnlineUser, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
 
 const TOKEN_KEY = "tek-map-token";
 export const AUTH_EXPIRED_EVENT = "tek-map-auth-expired";
@@ -280,6 +280,14 @@ export async function removeCustomIcon(id: string) {
   return apiDelete(`/api/icons/${id}`);
 }
 
+export async function getActivityLog() {
+  return apiGet<ActivityLogEntry[]>("/api/activity/log");
+}
+
+export async function getOnlineUsers() {
+  return apiGet<OnlineUser[]>("/api/activity/online");
+}
+
 export function openSnapshotsSocket(
   onMessage: (snapshots: DeviceSnapshot[]) => void,
   onConnected?: (connected: boolean) => void
@@ -292,7 +300,9 @@ export function openSnapshotsSocket(
   function connect() {
     if (destroyed) return;
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
+    const token = getToken();
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    socket = new WebSocket(`${protocol}://${window.location.host}/ws${query}`);
 
     socket.addEventListener("open", () => {
       backoff = 1_000;
