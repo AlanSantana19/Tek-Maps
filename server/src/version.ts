@@ -1,4 +1,4 @@
-const BASE_VERSION = "0.3.0";
+const BASE_VERSION = "0.4.0";
 
 const commitCount = process.env.GIT_COMMIT_COUNT ?? "0";
 const shortSha    = process.env.GIT_SHA ?? "local";
