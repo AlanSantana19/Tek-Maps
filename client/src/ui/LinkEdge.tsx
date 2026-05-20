@@ -195,6 +195,17 @@ export function LinkEdge({
     <>
       <BaseEdge id={id} path={edgePath} style={edgeStyle} markerEnd={markerEnd} />
 
+      {/* Wide transparent hit area — makes the full cable length hoverable for the tooltip */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={16}
+        onMouseEnter={handleBadgeMouseEnter}
+        onMouseLeave={() => setHovered(false)}
+        style={{ cursor: "default" }}
+      />
+
       {/* Invisible path used as mpath target for animateMotion */}
       <path
         id={pulsePathId}
