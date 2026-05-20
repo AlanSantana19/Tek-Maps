@@ -359,12 +359,12 @@ export function LinkEdge({
               zIndex: 20,
             }}
           >
-            {data?.cableType && (
-              <div className="edge-tooltip-row">
-                <span className="edge-tooltip-label">Tipo</span>
-                <span className="edge-tooltip-value">{CABLE_TYPE_LABELS[data.cableType]}</span>
-              </div>
-            )}
+            <div className="edge-tooltip-row">
+              <span className="edge-tooltip-label">Tipo</span>
+              <span className="edge-tooltip-value">
+                {data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : "Não definido"}
+              </span>
+            </div>
             {hasInterfaces && (
               <>
                 <div className="edge-tooltip-row">
