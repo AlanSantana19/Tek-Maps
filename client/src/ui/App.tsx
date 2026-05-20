@@ -189,6 +189,8 @@ type LinkEdgeData = {
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
   signalHostId?: string;
+  linkRole?: "primary" | "backup";
+  showLinkRole?: boolean;
 };
 
 type PaletteItem = {
@@ -1274,7 +1276,16 @@ function Dashboard({
   const syncTimes = hosts.map((host) => host.syncedAt).sort();
   const latestSync = syncTimes[syncTimes.length - 1];
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [activityPage, setActivityPage] = useState(1);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+
+  const todayStr = new Date().toLocaleDateString();
+  const todayLogs = activityLog.filter(
+    (entry) => new Date(entry.createdAt).toLocaleDateString() === todayStr
+  );
+  const LOGS_PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(todayLogs.length / LOGS_PER_PAGE));
+  const pagedLogs = todayLogs.slice((activityPage - 1) * LOGS_PER_PAGE, activityPage * LOGS_PER_PAGE);
 
   useEffect(() => {
     void getActivityLog().then(setActivityLog).catch(() => {});
@@ -1283,6 +1294,18 @@ function Dashboard({
       void getOnlineUsers().then(setOnlineUsers).catch(() => {});
     }, 5_000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Reset diário: limpa a lista e volta para página 1 quando virar o dia
+  useEffect(() => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+    const timer = setTimeout(() => {
+      setActivityLog([]);
+      setActivityPage(1);
+    }, msUntilMidnight);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -1315,10 +1338,10 @@ function Dashboard({
         <section className="panel">
           <h2>Atividade recente</h2>
           <div className="activity-list">
-            {activityLog.length === 0 ? (
-              <p className="empty-state">Nenhuma atividade registrada.</p>
+            {todayLogs.length === 0 ? (
+              <p className="empty-state">Nenhuma atividade registrada hoje.</p>
             ) : (
-              activityLog.slice(0, 30).map((entry) => (
+              pagedLogs.map((entry) => (
                 <div className="activity-row activity-row--log" key={entry.id}>
                   <span className={`activity-dot ${entry.action === "login" ? "login" : "edit"}`} />
                   <span className="activity-name">{entry.userName}</span>
@@ -1328,6 +1351,27 @@ function Dashboard({
               ))
             )}
           </div>
+          {totalPages > 1 && (
+            <div className="activity-pagination">
+              <button
+                className="activity-page-btn"
+                onClick={() => setActivityPage((p) => Math.max(1, p - 1))}
+                disabled={activityPage === 1}
+              >
+                Anterior
+              </button>
+              <span className="activity-page-info">
+                {activityPage} / {totalPages}
+              </span>
+              <button
+                className="activity-page-btn"
+                onClick={() => setActivityPage((p) => Math.min(totalPages, p + 1))}
+                disabled={activityPage === totalPages}
+              >
+                Próxima
+              </button>
+            </div>
+          )}
         </section>
       </div>
       <section className="panel">
@@ -1646,7 +1690,9 @@ function TopologyEditor({
     signalLabel: "",
     signalTxMetricKey: "",
     signalRxMetricKey: "",
-    signalHostId: ""
+    signalHostId: "",
+    linkRole: "" as "primary" | "backup" | "",
+    showLinkRole: true,
   });
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
   const [zabbixServers, setZabbixServers] = useState<ZabbixServerConfig[]>([]);
@@ -1831,7 +1877,9 @@ function TopologyEditor({
       signalLabel: data?.signalLabel ?? "",
       signalTxMetricKey: data?.signalTxMetricKey ?? "",
       signalRxMetricKey: data?.signalRxMetricKey ?? "",
-      signalHostId: data?.signalHostId ?? data?.sourceHostId ?? ""
+      signalHostId: data?.signalHostId ?? data?.sourceHostId ?? "",
+      linkRole: (data?.linkRole ?? "") as "primary" | "backup" | "",
+      showLinkRole: data?.showLinkRole ?? true,
     });
   }
 
@@ -1869,7 +1917,9 @@ function TopologyEditor({
       signalLabel: linkForm.signalLabel.trim() || undefined,
       signalTxMetricKey: linkForm.signalTxMetricKey || undefined,
       signalRxMetricKey: linkForm.signalRxMetricKey || undefined,
-      signalHostId: linkForm.signalHostId || draftSourceNode?.data.hostId
+      signalHostId: linkForm.signalHostId || draftSourceNode?.data.hostId,
+      linkRole: linkForm.linkRole || undefined,
+      showLinkRole: linkForm.showLinkRole,
     };
 
     if (selectedEdgeId) {
@@ -2749,6 +2799,44 @@ function TopologyEditor({
                   </button>
                 </div>
               </label>
+              <label>
+                Papel no anel / redundância
+                <div className="cable-routing-toggle">
+                  <button
+                    type="button"
+                    className={`cable-routing-btn${linkForm.linkRole === "" ? " active" : ""}`}
+                    onClick={() => setLinkForm({ ...linkForm, linkRole: "" })}
+                  >
+                    Nenhum
+                  </button>
+                  <button
+                    type="button"
+                    className={`cable-routing-btn${linkForm.linkRole === "primary" ? " active" : ""}`}
+                    onClick={() => setLinkForm({ ...linkForm, linkRole: "primary", color: "#22c55e" })}
+                    style={linkForm.linkRole === "primary" ? { color: "#22c55e", borderColor: "#22c55e" } : {}}
+                  >
+                    Principal
+                  </button>
+                  <button
+                    type="button"
+                    className={`cable-routing-btn${linkForm.linkRole === "backup" ? " active" : ""}`}
+                    onClick={() => setLinkForm({ ...linkForm, linkRole: "backup", color: "#f59e0b" })}
+                    style={linkForm.linkRole === "backup" ? { color: "#f59e0b", borderColor: "#f59e0b" } : {}}
+                  >
+                    Backup
+                  </button>
+                </div>
+              </label>
+              {linkForm.linkRole && (
+                <label className="element-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={linkForm.showLinkRole}
+                    onChange={(e) => setLinkForm({ ...linkForm, showLinkRole: e.target.checked })}
+                  />
+                  <span>Exibir badge de papel no cabo</span>
+                </label>
+              )}
               <label className="element-checkbox">
                 <input type="checkbox" checked={linkForm.showTraffic} onChange={(event) => setLinkForm({ ...linkForm, showTraffic: event.target.checked })} />
                 <span>Exibir trafego no cabo</span>
@@ -4671,7 +4759,9 @@ function defaultLinkForm() {
     signalLabel: "",
     signalTxMetricKey: "",
     signalRxMetricKey: "",
-    signalHostId: ""
+    signalHostId: "",
+    linkRole: "" as "primary" | "backup" | "",
+    showLinkRole: true,
   };
 }
 

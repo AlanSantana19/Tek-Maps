@@ -440,6 +440,44 @@ select {
 .activity-action { color: #91a1a9; }
 .activity-time { color: #91a1a9; font-size: 12px; white-space: nowrap; }
 
+.activity-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #202833;
+}
+
+.activity-page-btn {
+  background: #0c0f14;
+  border: 1px solid #273244;
+  border-radius: 5px;
+  color: #c8d8e8;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.activity-page-btn:hover:not(:disabled) {
+  background: #161c26;
+  border-color: #3b5068;
+}
+
+.activity-page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.activity-page-info {
+  font-size: 12px;
+  color: #91a1a9;
+  min-width: 48px;
+  text-align: center;
+}
+
 .summary-card,
 .panel {
   border: 1px solid #202833;

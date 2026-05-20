@@ -41,6 +41,8 @@ export type LinkEdgePayload = {
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
   signalHostId?: string;
+  linkRole?: "primary" | "backup";
+  showLinkRole?: boolean;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
@@ -140,6 +142,9 @@ export function LinkEdge({
     strokeDasharray: strokeDash,
     opacity: isDown ? 0.75 : 1,
   };
+
+  const linkRole     = data?.linkRole;
+  const showLinkRole = data?.showLinkRole ?? true;
 
   const pulsePathId = `pulse-path-${id}`;
   const badgeW = 76;
@@ -308,6 +313,30 @@ export function LinkEdge({
             ))}
         </div>
 
+        {/* Link role badge (Principal / Backup) */}
+        {linkRole && showLinkRole ? (
+          <div
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${badgeX}px, ${badgeY - 20}px)`,
+              pointerEvents: "none",
+              userSelect: "none",
+              background: linkRole === "primary" ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)",
+              border: `1px solid ${linkRole === "primary" ? "#22c55e" : "#f59e0b"}`,
+              borderRadius: 4,
+              padding: "1px 6px",
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              color: linkRole === "primary" ? "#22c55e" : "#f59e0b",
+              whiteSpace: "nowrap",
+              zIndex: 10,
+            }}
+          >
+            {linkRole === "primary" ? "PRINCIPAL" : "BACKUP"}
+          </div>
+        ) : null}
+
         {/* Hover tooltip */}
         {hovered ? (
           <div
@@ -319,7 +348,12 @@ export function LinkEdge({
               zIndex: 20,
             }}
           >
-            {cableTypeLabel && <div className="edge-tooltip-title">{cableTypeLabel}</div>}
+            {data?.cableType && (
+              <div className="edge-tooltip-row">
+                <span className="edge-tooltip-label">Tipo</span>
+                <span className="edge-tooltip-value">{CABLE_TYPE_LABELS[data.cableType]}</span>
+              </div>
+            )}
             {hasInterfaces && (
               <>
                 <div className="edge-tooltip-row">
@@ -362,11 +396,18 @@ export function LinkEdge({
                 )}
               </>
             ) : null}
-            {(hasInterfaces || hasSignalData) && <div className="edge-tooltip-divider" />}
-            <div className="edge-tooltip-row">
-              <span className="edge-tooltip-label">Traçado</span>
-              <span className="edge-tooltip-value">{tracadoLabel}</span>
-            </div>
+            {(hasInterfaces || hasSignalData) && linkRole && <div className="edge-tooltip-divider" />}
+            {linkRole && (
+              <div className="edge-tooltip-row">
+                <span className="edge-tooltip-label">Papel</span>
+                <span
+                  className="edge-tooltip-value"
+                  style={{ color: linkRole === "primary" ? "#22c55e" : "#f59e0b", fontWeight: 700 }}
+                >
+                  {linkRole === "primary" ? "Principal" : "Backup"}
+                </span>
+              </div>
+            )}
           </div>
         ) : null}
       </EdgeLabelRenderer>
