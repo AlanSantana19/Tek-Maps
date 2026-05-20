@@ -260,7 +260,7 @@ export function LinkEdge({
           />
         ) : null}
 
-        {/* TX/RX badge or invisible hover zone */}
+        {/* TX/RX badge, cable type label, or invisible hover zone */}
         <div
           className="nodrag nopan"
           onMouseEnter={handleBadgeMouseEnter}
@@ -271,14 +271,14 @@ export function LinkEdge({
             pointerEvents: "all",
             cursor: "default",
             userSelect: "none",
-            zIndex: showBadge ? 11 : 8,
-            ...(showBadge
+            zIndex: showBadge || cableTypeLabel ? 11 : 8,
+            ...(showBadge || cableTypeLabel
               ? {
                   background: isDown ? "#1a0808" : "#0c0f14",
                   border: `1px solid ${isDown ? "#ef4444" : "#273244"}`,
                   borderRadius: 4,
                   padding: "3px 8px",
-                  minWidth: badgeW,
+                  minWidth: showBadge ? badgeW : "auto",
                   textAlign: "center" as const,
                   lineHeight: 1.4,
                   ...(isDown
@@ -288,65 +288,44 @@ export function LinkEdge({
               : { width: 24, height: 24 }),
           }}
         >
-          {showBadge &&
-            (isDown ? (
-              <span
-                style={{
-                  color: "#ef4444",
-                  fontSize: Math.round(badgeFontSize * 1.1),
-                  fontWeight: 800,
-                  letterSpacing: "0.08em",
-                }}
-              >
-                DOWN
-              </span>
-            ) : (
-              <>
-                {cableTypeLabel ? (
-                  <div
-                    style={{
-                      color: "#fff",
-                      fontSize: Math.round(badgeFontSize * 0.8),
-                      fontWeight: 700,
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    {cableTypeLabel}
+          {isDown ? (
+            <span
+              style={{
+                color: "#ef4444",
+                fontSize: Math.round(badgeFontSize * 1.1),
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+              }}
+            >
+              DOWN
+            </span>
+          ) : (
+            <>
+              {cableTypeLabel ? (
+                <div
+                  style={{
+                    color: "#fff",
+                    fontSize: Math.round(badgeFontSize * 0.8),
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {cableTypeLabel}
+                </div>
+              ) : null}
+              {showBadge && (
+                <>
+                  <div style={{ color: "#34d399", fontSize: badgeFontSize, fontWeight: 600 }}>
+                    TX: {formatBps(txBps)}
                   </div>
-                ) : null}
-                <div style={{ color: "#34d399", fontSize: badgeFontSize, fontWeight: 600 }}>
-                  TX: {formatBps(txBps)}
-                </div>
-                <div style={{ color: "#60a5fa", fontSize: badgeFontSize, fontWeight: 600 }}>
-                  RX: {formatBps(rxBps)}
-                </div>
-              </>
-            ))}
+                  <div style={{ color: "#60a5fa", fontSize: badgeFontSize, fontWeight: 600 }}>
+                    RX: {formatBps(rxBps)}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
-
-        {/* Link role badge (Principal / Backup) */}
-        {linkRole && showLinkRole ? (
-          <div
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${badgeX}px, ${badgeY - 20}px)`,
-              pointerEvents: "none",
-              userSelect: "none",
-              background: linkRole === "primary" ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)",
-              border: `1px solid ${linkRole === "primary" ? "#22c55e" : "#f59e0b"}`,
-              borderRadius: 4,
-              padding: "1px 6px",
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              color: linkRole === "primary" ? "#22c55e" : "#f59e0b",
-              whiteSpace: "nowrap",
-              zIndex: 10,
-            }}
-          >
-            {linkRole === "primary" ? "PRINCIPAL" : "BACKUP"}
-          </div>
-        ) : null}
 
         {/* Hover tooltip */}
         {hovered ? (
@@ -359,12 +338,12 @@ export function LinkEdge({
               zIndex: 20,
             }}
           >
-            <div className="edge-tooltip-row">
-              <span className="edge-tooltip-label">Tipo</span>
-              <span className="edge-tooltip-value">
-                {data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : "Não definido"}
-              </span>
-            </div>
+            {data?.cableType && (
+              <div className="edge-tooltip-row">
+                <span className="edge-tooltip-label">Tipo</span>
+                <span className="edge-tooltip-value">{CABLE_TYPE_LABELS[data.cableType]}</span>
+              </div>
+            )}
             {hasInterfaces && (
               <>
                 <div className="edge-tooltip-row">

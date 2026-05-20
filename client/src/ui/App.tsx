@@ -2812,7 +2812,7 @@ function TopologyEditor({
                   <button
                     type="button"
                     className={`cable-routing-btn${linkForm.linkRole === "primary" ? " active" : ""}`}
-                    onClick={() => setLinkForm({ ...linkForm, linkRole: "primary", color: "#22c55e" })}
+                    onClick={() => setLinkForm({ ...linkForm, linkRole: "primary" })}
                     style={linkForm.linkRole === "primary" ? { color: "#22c55e", borderColor: "#22c55e" } : {}}
                   >
                     Principal
@@ -2820,7 +2820,7 @@ function TopologyEditor({
                   <button
                     type="button"
                     className={`cable-routing-btn${linkForm.linkRole === "backup" ? " active" : ""}`}
-                    onClick={() => setLinkForm({ ...linkForm, linkRole: "backup", color: "#f59e0b" })}
+                    onClick={() => setLinkForm({ ...linkForm, linkRole: "backup" })}
                     style={linkForm.linkRole === "backup" ? { color: "#f59e0b", borderColor: "#f59e0b" } : {}}
                   >
                     Backup
@@ -4627,6 +4627,14 @@ function fromFlowNode(node: DeviceFlowNode): Topology["nodes"][number] {
   };
 }
 
+function inferCableType(color?: string, lineStyle?: string): CableType | undefined {
+  if (!color) return undefined;
+  for (const [type, preset] of Object.entries(CABLE_TYPE_PRESETS) as [CableType, typeof CABLE_TYPE_PRESETS[CableType]][]) {
+    if (preset.color === color && preset.lineStyle === (lineStyle ?? "solid")) return type;
+  }
+  return undefined;
+}
+
 function toFlowEdge(edge: Topology["edges"][number]): Edge {
   return buildLinkEdge({
     id: edge.id,
@@ -4652,7 +4660,7 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       targetInterfaceAlias: edge.targetInterfaceAlias,
       sourceInterface: edge.sourceInterface,
       targetInterface: edge.targetInterface,
-      cableType: edge.cableType,
+      cableType: edge.cableType ?? inferCableType(edge.color, edge.lineStyle),
       color: edge.color,
       strokeWidth: edge.strokeWidth,
       lineStyle: edge.lineStyle,
