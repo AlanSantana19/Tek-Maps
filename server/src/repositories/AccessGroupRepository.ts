@@ -18,9 +18,16 @@ export interface AccessGroupMemberRecord {
 }
 
 export class AccessGroupRepository {
+  private ready: Promise<void> | null = null;
   constructor(private readonly db: pg.Pool) {}
 
-  private async ensureSchema(): Promise<void> {
+  private ensureSchema(): Promise<void> {
+    if (this.ready) return this.ready;
+    this.ready = this._runEnsure();
+    return this.ready;
+  }
+
+  private async _runEnsure(): Promise<void> {
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS access_groups (
         id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -2,6 +2,7 @@ import type pg from "pg";
 import type { DeviceSnapshot } from "../types.js";
 
 export class ZabbixCacheRepository {
+  private ready: Promise<void> | null = null;
   constructor(private readonly db: pg.Pool) {}
 
   async replaceAll(snapshots: DeviceSnapshot[], zabbixServerId?: string): Promise<void> {
@@ -70,11 +71,15 @@ export class ZabbixCacheRepository {
     }));
   }
 
-  private async ensureSchema(): Promise<void> {
-    await this.db.query("ALTER TABLE zabbix_host_cache ADD COLUMN IF NOT EXISTS zabbix_server_id UUID");
-    await this.db.query("UPDATE zabbix_host_cache SET zabbix_server_id = '00000000-0000-0000-0000-000000000000' WHERE zabbix_server_id IS NULL");
-    await this.db.query("ALTER TABLE zabbix_host_cache ALTER COLUMN zabbix_server_id SET NOT NULL");
-    await this.db.query("ALTER TABLE zabbix_host_cache DROP CONSTRAINT IF EXISTS zabbix_host_cache_pkey");
-    await this.db.query("CREATE UNIQUE INDEX IF NOT EXISTS zabbix_host_cache_server_host_idx ON zabbix_host_cache (zabbix_server_id, host_id)");
+  private ensureSchema(): Promise<void> {
+    if (!this.ready) {
+      this.ready = this.db.query("ALTER TABLE zabbix_host_cache ADD COLUMN IF NOT EXISTS zabbix_server_id UUID")
+        .then(() => this.db.query("UPDATE zabbix_host_cache SET zabbix_server_id = '00000000-0000-0000-0000-000000000000' WHERE zabbix_server_id IS NULL"))
+        .then(() => this.db.query("ALTER TABLE zabbix_host_cache ALTER COLUMN zabbix_server_id SET NOT NULL"))
+        .then(() => this.db.query("ALTER TABLE zabbix_host_cache DROP CONSTRAINT IF EXISTS zabbix_host_cache_pkey"))
+        .then(() => this.db.query("CREATE UNIQUE INDEX IF NOT EXISTS zabbix_host_cache_server_host_idx ON zabbix_host_cache (zabbix_server_id, host_id)"))
+        .then(() => undefined);
+    }
+    return this.ready;
   }
 }

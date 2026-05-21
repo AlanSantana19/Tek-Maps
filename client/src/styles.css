@@ -2059,14 +2059,19 @@ select {
   flex: 1;
 }
 
-.viewer-countdown {
-  font-size: 0.78rem;
-  color: #64748b;
-  font-variant-numeric: tabular-nums;
-  background: #0d1117;
-  border: 1px solid #202833;
-  border-radius: 5px;
-  padding: 3px 9px;
+@keyframes viewer-progress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+.viewer-countdown-bar {
+  height: 4px;
+  width: 100%;
+  flex: 1;
+  border-radius: 2px;
+  background: #3b82f6;
+  animation: viewer-progress 10s linear forwards;
+  align-self: center;
 }
 
 .viewer-bar-btn {

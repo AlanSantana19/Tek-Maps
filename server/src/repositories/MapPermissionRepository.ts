@@ -51,6 +51,7 @@ export interface MenuPermissionAuditEntry {
 }
 
 export class MapPermissionRepository {
+  private ready: Promise<void> | null = null;
   constructor(private readonly db: pg.Pool) {}
 
   async list(): Promise<UserMapPermission[]> {
@@ -319,7 +320,13 @@ export class MapPermissionRepository {
     }
   }
 
-  private async ensureTables() {
+  private ensureTables(): Promise<void> {
+    if (this.ready) return this.ready;
+    this.ready = this._runEnsure();
+    return this.ready;
+  }
+
+  private async _runEnsure(): Promise<void> {
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS access_user_map_permissions (
         user_id UUID NOT NULL REFERENCES access_users(id) ON DELETE CASCADE,

@@ -1491,7 +1491,7 @@ function Dashboard({
     void getOnlineUsers().then(setOnlineUsers).catch(() => {});
     const interval = setInterval(() => {
       void getOnlineUsers().then(setOnlineUsers).catch(() => {});
-    }, 2_000);
+    }, 10_000);
     return () => clearInterval(interval);
   }, [wsConnected]);
 
@@ -3259,7 +3259,7 @@ const VIEWER_REFRESH_INTERVAL = 10;
 function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<string, DeviceSnapshot>; customIcons: CustomIcon[] }) {
   const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>([]);
   const [selected, setSelected] = useState<(Topology & { id: string }) | null>(null);
-  const [countdown, setCountdown] = useState(VIEWER_REFRESH_INTERVAL);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const rfInstanceRef = useRef<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
@@ -3279,7 +3279,7 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
 
   useEffect(() => {
     if (!selected) return;
-    setCountdown(VIEWER_REFRESH_INTERVAL);
+    setRefreshKey((k) => k + 1);
 
     const refresh = setInterval(async () => {
       try {
@@ -3288,12 +3288,10 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
       } catch {
         setSelected(null);
       }
-      setCountdown(VIEWER_REFRESH_INTERVAL);
+      setRefreshKey((k) => k + 1);
     }, VIEWER_REFRESH_INTERVAL * 1000);
 
-    const tick = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
-
-    return () => { clearInterval(refresh); clearInterval(tick); };
+    return () => clearInterval(refresh);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -3349,9 +3347,7 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
           <Activity size={15} />
           {selected.name}
         </span>
-        <span className="viewer-countdown">
-          Atualiza em {countdown}s
-        </span>
+        <span key={refreshKey} className="viewer-countdown-bar" />
         <button className="viewer-bar-btn" onClick={toggleFullscreen} title={isFullscreen ? "Sair tela cheia" : "Tela cheia"}>
           {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
         </button>

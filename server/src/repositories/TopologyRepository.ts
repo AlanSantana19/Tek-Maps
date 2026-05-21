@@ -3,6 +3,7 @@ import type pg from "pg";
 import type { Topology } from "../types.js";
 
 export class TopologyRepository {
+  private ready: Promise<void> | null = null;
   constructor(private readonly db: pg.Pool) {}
 
   async list(): Promise<Topology[]> {
@@ -51,10 +52,14 @@ export class TopologyRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
-  private async ensureColumns() {
-    await this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_id UUID");
-    await this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS topology_type TEXT CHECK (topology_type IN ('isp', 'corporate'))");
-    await this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_ids UUID[] NOT NULL DEFAULT '{}'");
+  private ensureColumns(): Promise<void> {
+    if (!this.ready) {
+      this.ready = this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_id UUID")
+        .then(() => this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS topology_type TEXT CHECK (topology_type IN ('isp', 'corporate'))"))
+        .then(() => this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_ids UUID[] NOT NULL DEFAULT '{}'"))
+        .then(() => undefined);
+    }
+    return this.ready;
   }
 }
 
