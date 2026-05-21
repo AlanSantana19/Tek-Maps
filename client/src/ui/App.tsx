@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Eye,
   HardDrive,
   Image,
@@ -33,6 +34,7 @@ import {
   Shield,
   SlidersHorizontal,
   Trash2,
+  Upload,
   Users,
   Workflow,
   X
@@ -1642,6 +1644,8 @@ function EditorMaps({
   const [status, setStatus] = useState<string | null>(null);
   const [savingMap, setSavingMap] = useState(false);
   const [busyMapId, setBusyMapId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void Promise.all([
@@ -1717,6 +1721,40 @@ function EditorMaps({
     return servers.find((server) => server.id === id)?.name ?? "Servidor nao vinculado";
   }
 
+  async function handleImportFile(file: File | undefined) {
+    if (!file) return;
+    setStatus(null);
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as Partial<Topology>;
+      if (!data.name || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+        setStatus("Arquivo invalido: JSON nao e uma topologia exportada.");
+        return;
+      }
+      const { id: _id, ...rest } = data as Topology & { id?: string };
+      const saved = await saveTopology({ ...rest, name: data.name, nodes: data.nodes, edges: data.edges });
+      onTopologiesChange([saved, ...topologies]);
+      setStatus(`Mapa "${saved.name}" importado com sucesso.`);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao importar arquivo.");
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  function exportTopology(topology: Topology & { id: string }) {
+    const json = JSON.stringify(topology, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${topology.name}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section className="page">
       <PageHeader title="Editor Maps" subtitle="Crie, localize e abra mapas de rede para montar topologias." />
@@ -1767,7 +1805,20 @@ function EditorMaps({
         </form>
 
         <section className="panel">
-          <h2>Mapas criados</h2>
+          <div className="panel-header-row">
+            <h2>Mapas criados</h2>
+            <button className="secondary-button" type="button" onClick={() => importInputRef.current?.click()} disabled={importing}>
+              <Upload size={16} />
+              {importing ? "Importando..." : "Importar mapa"}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={(e) => void handleImportFile(e.target.files?.[0])}
+            />
+          </div>
           {topologies.length === 0 ? (
             <button className="empty-create-button" type="button" onClick={() => setStatus("Preencha servidor Zabbix e identificacao para salvar um novo mapa.")}>
               <Plus size={32} />
@@ -1791,6 +1842,9 @@ function EditorMaps({
                   <div className="row-actions">
                     <button className="icon-action-button" type="button" onClick={(e) => { e.stopPropagation(); editMap(topology); }} title="Editar nome" aria-label={`Editar ${topology.name}`}>
                       <Pencil size={18} />
+                    </button>
+                    <button className="icon-action-button" type="button" onClick={(e) => { e.stopPropagation(); exportTopology(topology); }} title="Exportar JSON" aria-label={`Exportar ${topology.name}`}>
+                      <Download size={18} />
                     </button>
                     <button className="icon-action-button danger" type="button" onClick={(e) => { e.stopPropagation(); void removeMap(topology); }} disabled={busyMapId === topology.id} title="Remover" aria-label={`Remover ${topology.name}`}>
                       <Trash2 size={18} />

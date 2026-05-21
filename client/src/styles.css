@@ -621,6 +621,17 @@ select {
   flex-shrink: 0;
 }
 
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-header-row h2 {
+  margin: 0;
+}
+
 
 .event-list,
 .user-list,
