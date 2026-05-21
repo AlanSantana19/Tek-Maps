@@ -1393,7 +1393,19 @@ function Dashboard({
     return map;
   }, [topologies]);
 
-  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>(() => {
+    try {
+      const stored = localStorage.getItem("tek-map-recent-events");
+      if (!stored) return [];
+      const parsed = JSON.parse(stored) as Array<Omit<RecentEvent, "timestamp"> & { timestamp: string }>;
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      return parsed
+        .filter((e) => new Date(e.timestamp).getTime() > cutoff)
+        .map((e) => ({ ...e, timestamp: new Date(e.timestamp) }));
+    } catch {
+      return [];
+    }
+  });
   const [eventsPage, setEventsPage] = useState(1);
   const prevHostStatusRef = useRef(new Map<string, string>());
   const prevBwAlertEdgesRef = useRef(new Set<string>());
@@ -1401,6 +1413,12 @@ function Dashboard({
   const EVENTS_PER_PAGE = 10;
   const totalEventPages = Math.max(1, Math.ceil(recentEvents.length / EVENTS_PER_PAGE));
   const pagedEvents = recentEvents.slice((eventsPage - 1) * EVENTS_PER_PAGE, eventsPage * EVENTS_PER_PAGE);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("tek-map-recent-events", JSON.stringify(recentEvents));
+    } catch {}
+  }, [recentEvents]);
 
   useEffect(() => {
     const prev = prevHostStatusRef.current;
@@ -1486,8 +1504,6 @@ function Dashboard({
     const timer = setTimeout(() => {
       setActivityLog([]);
       setActivityPage(1);
-      setRecentEvents([]);
-      setEventsPage(1);
     }, msUntilMidnight);
     return () => clearTimeout(timer);
   }, []);
@@ -1510,12 +1526,14 @@ function Dashboard({
               {bandwidthAlerts.map((alert) => (
                 <div className="event-row" key={alert.edgeId}>
                   <span className={`status-dot ${alert.level === "critical" ? "down" : "bw-warning"}`} />
-                  <strong>
-                    {alert.linkLabel
-                      ? alert.linkLabel
-                      : `${alert.sourceHostName}${alert.targetHostName ? ` → ${alert.targetHostName}` : ""}`}
-                  </strong>
-                  <span className="event-detail">{alert.topologyName}</span>
+                  <div className="event-row-body">
+                    <strong>
+                      {alert.linkLabel
+                        ? alert.linkLabel
+                        : `${alert.sourceHostName}${alert.targetHostName ? ` → ${alert.targetHostName}` : ""}`}
+                    </strong>
+                    <span className="event-detail">{alert.topologyName}</span>
+                  </div>
                   <span className={`event-badge ${alert.level === "critical" ? "event-badge--danger" : "event-badge--warning"}`}>
                     {Math.round(alert.utilizationPct)}%
                     {" "}de{" "}
@@ -1528,65 +1546,62 @@ function Dashboard({
         </div>
       )}
 
-      <div className="dashboard-panels dashboard-panels--3col">
-        <section className="panel">
-          <h2>Online agora</h2>
-          <div className="activity-list">
-            {onlineUsers.length === 0 ? (
-              <p className="empty-state">Nenhum usuario conectado.</p>
-            ) : (
-              onlineUsers.map((user, i) => (
-                <div className="activity-row" key={`${user.name}-${i}`}>
-                  <span className="activity-dot online" />
-                  <span className="activity-name">{user.name}</span>
-                  <span className="activity-action">{user.ip}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-        <section className="panel">
-          <h2>Eventos recentes</h2>
-          <div className="event-list">
-            {recentEvents.length === 0 ? (
-              <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
-            ) : (
-              pagedEvents.map((event) => (
-                <div className="event-row" key={event.id}>
-                  <span className={`status-dot ${
-                    event.type === "host_down" ? "down"
-                    : event.type === "host_up" ? "up"
-                    : event.type === "bw_critical" ? "down"
-                    : "bw-warning"
-                  }`} />
-                  <strong>{event.label}</strong>
-                  <span className="event-detail">{event.detail ?? ""}</span>
-                  <span className={`event-badge ${
-                    event.type === "host_down" ? "event-badge--danger"
-                    : event.type === "host_up" ? "event-badge--ok"
-                    : event.type === "bw_critical" ? "event-badge--danger"
-                    : "event-badge--warning"
-                  }`}>
-                    {event.type === "host_down" ? "OFFLINE"
-                     : event.type === "host_up" ? "ONLINE"
-                     : event.type === "bw_critical" ? "CRITICO"
-                     : "ATENCAO"}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-          {totalEventPages > 1 && (
-            <div className="activity-pagination">
-              <button className="activity-page-btn" onClick={() => setEventsPage((p) => Math.max(1, p - 1))} disabled={eventsPage === 1}>Anterior</button>
-              <span className="activity-page-info">{eventsPage} / {totalEventPages}</span>
-              <button className="activity-page-btn" onClick={() => setEventsPage((p) => Math.min(totalEventPages, p + 1))} disabled={eventsPage === totalEventPages}>Proxima</button>
+      <div className="dashboard-panels dashboard-panels--2col">
+        <div className="dashboard-col">
+          <section className="panel">
+            <h2>Online agora</h2>
+            <div className="activity-list">
+              {onlineUsers.length === 0 ? (
+                <p className="empty-state">Nenhum usuario conectado.</p>
+              ) : (
+                onlineUsers.map((user, i) => (
+                  <div className="activity-row" key={`${user.name}-${i}`}>
+                    <span className="activity-dot online" />
+                    <span className="activity-name">{user.name}</span>
+                    <span className="activity-action">{user.ip}</span>
+                  </div>
+                ))
+              )}
             </div>
-          )}
-        </section>
-        <section className="panel">
+          </section>
+          <section className="panel panel--events">
+            <h2>Eventos recentes</h2>
+            <div className="event-list event-list--scroll">
+              {recentEvents.length === 0 ? (
+                <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
+              ) : (
+                recentEvents.map((event) => (
+                  <div className="event-row" key={event.id}>
+                    <span className={`status-dot ${
+                      event.type === "host_down" ? "down"
+                      : event.type === "host_up" ? "up"
+                      : event.type === "bw_critical" ? "down"
+                      : "bw-warning"
+                    }`} />
+                    <div className="event-row-body">
+                      <strong>{event.label}</strong>
+                      <span className="event-detail">{event.detail ?? ""}</span>
+                    </div>
+                    <span className={`event-badge ${
+                      event.type === "host_down" ? "event-badge--danger"
+                      : event.type === "host_up" ? "event-badge--ok"
+                      : event.type === "bw_critical" ? "event-badge--danger"
+                      : "event-badge--warning"
+                    }`}>
+                      {event.type === "host_down" ? "OFFLINE"
+                       : event.type === "host_up" ? "ONLINE"
+                       : event.type === "bw_critical" ? "CRITICO"
+                       : "ATENCAO"}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+        <section className="panel panel--full-col">
           <h2>Atividade recente</h2>
-          <div className="activity-list">
+          <div className="activity-list activity-list--scroll">
             {todayLogs.length === 0 ? (
               <p className="empty-state">Nenhuma atividade registrada hoje.</p>
             ) : (
