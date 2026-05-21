@@ -1483,10 +1483,15 @@ function Dashboard({
   }, [bandwidthAlerts]);
 
   useEffect(() => {
-    void getActivityLog().then(setActivityLog).catch(() => {});
-    void getRecentEvents().then((rows) => {
-      setRecentEvents(rows.map((r) => ({ ...r, type: r.type as RecentEvent["type"], timestamp: new Date(r.createdAt) })));
-    }).catch(() => {});
+    function fetchDashboardData() {
+      void getActivityLog().then(setActivityLog).catch(() => {});
+      void getRecentEvents().then((rows) => {
+        setRecentEvents(rows.map((r) => ({ ...r, type: r.type as RecentEvent["type"], timestamp: new Date(r.createdAt) })));
+      }).catch(() => {});
+    }
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
