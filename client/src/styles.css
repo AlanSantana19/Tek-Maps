@@ -2059,20 +2059,6 @@ select {
   flex: 1;
 }
 
-@keyframes viewer-progress {
-  from { width: 100%; }
-  to   { width: 0%; }
-}
-
-.viewer-countdown-bar {
-  height: 4px;
-  width: 100%;
-  flex: 1;
-  border-radius: 2px;
-  background: #3b82f6;
-  animation: viewer-progress 10s linear forwards;
-  align-self: center;
-}
 
 .viewer-bar-btn {
   display: flex;

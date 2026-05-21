@@ -3347,7 +3347,6 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
           <Activity size={15} />
           {selected.name}
         </span>
-        <span key={refreshKey} className="viewer-countdown-bar" />
         <button className="viewer-bar-btn" onClick={toggleFullscreen} title={isFullscreen ? "Sair tela cheia" : "Tela cheia"}>
           {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
         </button>
