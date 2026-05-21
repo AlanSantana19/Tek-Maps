@@ -1406,10 +1406,24 @@ function Dashboard({
     const events: RecentEvent[] = [];
     for (const host of hosts) {
       const prevStatus = prev.get(host.hostId);
-      if (prevStatus !== undefined && prevStatus !== host.status) {
-        const maps = hostToMaps.get(host.hostId) ?? [];
-        const time = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-        const detail = [...maps, time].join(" · ");
+      const maps = hostToMaps.get(host.hostId) ?? [];
+      // ignora hosts que nao estao em nenhum mapa criado
+      // nao grava no prev para reprocessar quando as topologias carregarem
+      if (maps.length === 0) continue;
+      const time = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const detail = [...maps, time].join(" · ");
+      if (prevStatus === undefined) {
+        // carga inicial: registra hosts já offline no momento
+        if (host.status === "down") {
+          events.push({
+            id: `${host.hostId}-down-init-${Date.now()}`,
+            type: "host_down",
+            label: host.visibleName,
+            detail,
+            timestamp: new Date()
+          });
+        }
+      } else if (prevStatus !== host.status) {
         events.push({
           id: `${host.hostId}-${host.status}-${Date.now()}`,
           type: host.status === "down" ? "host_down" : "host_up",
@@ -1487,49 +1501,29 @@ function Dashboard({
         <SummaryCard label="Indisponiveis" value={downHosts} tone={downHosts ? "danger" : "ok"} />
         <SummaryCard label="Ultima sync" value={latestSync ? new Date(latestSync).toLocaleString() : "Sem dados"} />
       </div>
-      {(offlineHostsList.length > 0 || bandwidthAlerts.length > 0) && (
+      {bandwidthAlerts.length > 0 && (
         <div className="dashboard-panels">
-          {offlineHostsList.length > 0 && (
-            <section className="panel panel--danger">
-              <h2>Hosts offline</h2>
-              <div className="event-list">
-                {offlineHostsList.map((host) => {
-                  const mapNames = hostToMaps.get(host.hostId) ?? [];
-                  return (
-                    <div className="event-row" key={host.hostId}>
-                      <span className="status-dot down" />
-                      <strong>{host.visibleName}</strong>
-                      <span className="event-detail">{mapNames.join(", ")}</span>
-                      <span className="event-badge event-badge--danger">OFFLINE</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-          {bandwidthAlerts.length > 0 && (
-            <section className="panel panel--bandwidth">
-              <h2>Alertas de banda</h2>
-              <div className="event-list">
-                {bandwidthAlerts.map((alert) => (
-                  <div className="event-row" key={alert.edgeId}>
-                    <span className={`status-dot ${alert.level === "critical" ? "down" : "bw-warning"}`} />
-                    <strong>
-                      {alert.linkLabel
-                        ? alert.linkLabel
-                        : `${alert.sourceHostName}${alert.targetHostName ? ` → ${alert.targetHostName}` : ""}`}
-                    </strong>
-                    <span className="event-detail">{alert.topologyName}</span>
-                    <span className={`event-badge ${alert.level === "critical" ? "event-badge--danger" : "event-badge--warning"}`}>
-                      {Math.round(alert.utilizationPct)}%
-                      {" "}de{" "}
-                      {alert.limitMbps >= 1000 ? `${alert.limitMbps / 1000}Gbps` : `${alert.limitMbps}Mbps`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+          <section className="panel panel--bandwidth">
+            <h2>Alertas de banda</h2>
+            <div className="event-list">
+              {bandwidthAlerts.map((alert) => (
+                <div className="event-row" key={alert.edgeId}>
+                  <span className={`status-dot ${alert.level === "critical" ? "down" : "bw-warning"}`} />
+                  <strong>
+                    {alert.linkLabel
+                      ? alert.linkLabel
+                      : `${alert.sourceHostName}${alert.targetHostName ? ` → ${alert.targetHostName}` : ""}`}
+                  </strong>
+                  <span className="event-detail">{alert.topologyName}</span>
+                  <span className={`event-badge ${alert.level === "critical" ? "event-badge--danger" : "event-badge--warning"}`}>
+                    {Math.round(alert.utilizationPct)}%
+                    {" "}de{" "}
+                    {alert.limitMbps >= 1000 ? `${alert.limitMbps / 1000}Gbps` : `${alert.limitMbps}Mbps`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       )}
 
@@ -3252,21 +3246,23 @@ const VIEWER_REFRESH_INTERVAL = 10;
 function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<string, DeviceSnapshot>; customIcons: CustomIcon[] }) {
   const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>([]);
   const [selected, setSelected] = useState<(Topology & { id: string }) | null>(null);
-  const [viewNodes, setViewNodes] = useState<DeviceFlowNode[]>([]);
-  const [viewEdges, setViewEdges] = useState<Edge[]>([]);
   const [countdown, setCountdown] = useState(VIEWER_REFRESH_INTERVAL);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
+  const rfInstanceRef = useRef<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
+
+  const viewNodes = useMemo(
+    () => selected ? selected.nodes.map(toFlowNode(Array.from(snapshotsByHost.values()), customIcons)) : [],
+    [selected, snapshotsByHost, customIcons]
+  );
+  const viewEdges = useMemo(
+    () => selected ? selected.edges.map(toFlowEdge) : [],
+    [selected]
+  );
 
   useEffect(() => {
     void apiGet<Array<Topology & { id: string }>>("/api/topologies").then(setTopologies).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setViewNodes(selected.nodes.map(toFlowNode(Array.from(snapshotsByHost.values()), customIcons)));
-    setViewEdges(selected.edges.map(toFlowEdge));
-  }, [selected, snapshotsByHost, customIcons]);
 
   useEffect(() => {
     if (!selected) return;
@@ -3278,8 +3274,6 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
         setSelected(updated);
       } catch {
         setSelected(null);
-        setViewNodes([]);
-        setViewEdges([]);
       }
       setCountdown(VIEWER_REFRESH_INTERVAL);
     }, VIEWER_REFRESH_INTERVAL * 1000);
@@ -3290,7 +3284,13 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
   }, [selected?.id]);
 
   useEffect(() => {
-    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
+    function onFsChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+      // aguarda o browser redimensionar o canvas antes de centralizar
+      setTimeout(() => {
+        rfInstanceRef.current?.fitView({ padding: 0.12, duration: 350 });
+      }, 300);
+    }
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
@@ -3306,8 +3306,6 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
   function exitViewer() {
     if (document.fullscreenElement) void document.exitFullscreen();
     setSelected(null);
-    setViewNodes([]);
-    setViewEdges([]);
   }
 
   if (!selected) {
@@ -3349,7 +3347,14 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
         </button>
       </div>
       <div className="viewer-canvas-wrap">
-        <TopologyCanvas nodes={viewNodes} edges={viewEdges} snapshotsByHost={snapshotsByHost} readonly />
+        <TopologyCanvas
+          key={selected.id}
+          nodes={viewNodes}
+          edges={viewEdges}
+          snapshotsByHost={snapshotsByHost}
+          readonly
+          onInit={(inst) => { rfInstanceRef.current = inst; }}
+        />
       </div>
     </div>
   );
@@ -4802,7 +4807,13 @@ function TopologyCanvas({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onInit={(inst) => { setRfInstance(inst); onInit?.(inst); }}
+          onInit={(inst) => {
+            setRfInstance(inst);
+            onInit?.(inst);
+            if (readonly) {
+              requestAnimationFrame(() => inst.fitView({ padding: 0.12, duration: 350 }));
+            }
+          }}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
