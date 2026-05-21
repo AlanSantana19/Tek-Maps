@@ -1648,13 +1648,18 @@ function EditorMaps({
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void Promise.all([
-      apiGet<ZabbixServerConfig[]>("/api/server/zabbix"),
-      apiGet<Array<Topology & { id: string }>>("/api/topologies")
-    ]).then(([serverData, topologyData]) => {
-      setServers(serverData);
-      onTopologiesChange(topologyData);
-    }).catch(() => setStatus("Nao foi possivel carregar mapas e servidores."));
+    function fetchData() {
+      void Promise.all([
+        apiGet<ZabbixServerConfig[]>("/api/server/zabbix"),
+        apiGet<Array<Topology & { id: string }>>("/api/topologies")
+      ]).then(([serverData, topologyData]) => {
+        setServers(serverData);
+        onTopologiesChange(topologyData);
+      }).catch(() => setStatus("Nao foi possivel carregar mapas e servidores."));
+    }
+    fetchData();
+    const interval = setInterval(fetchData, 30_000);
+    return () => clearInterval(interval);
   }, [onTopologiesChange]);
 
   async function handleSaveMap(event: FormEvent) {
