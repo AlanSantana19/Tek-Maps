@@ -285,8 +285,8 @@ export function LinkEdge({
               ? {
                   background: isDown
                     ? "#1a0808"
-                    : bwCritical ? "rgba(239,68,68,0.10)"
-                    : bwWarning  ? "rgba(245,158,11,0.10)"
+                    : bwCritical ? "#2d0808"
+                    : bwWarning  ? "#2a1500"
                     : "#0c0f14",
                   border: `1px solid ${
                     isDown      ? "#ef4444"
