@@ -77,7 +77,8 @@ const topologySchema = z.object({
     signalLabel: z.string().max(120).optional(),
     signalTxMetricKey: z.string().max(240).optional(),
     signalRxMetricKey: z.string().max(240).optional(),
-    signalHostId: z.string().optional()
+    signalHostId: z.string().optional(),
+    bandwidthLimit: z.number().min(0).optional()
   }))
 });
 

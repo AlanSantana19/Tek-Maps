@@ -43,6 +43,7 @@ export type LinkEdgePayload = {
   signalHostId?: string;
   linkRole?: "primary" | "backup";
   showLinkRole?: boolean;
+  bandwidthLimit?: number;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
@@ -111,7 +112,15 @@ export function LinkEdge({
   const hasActiveTraffic = hasInterfaces && (txBps > 0 || rxBps > 0);
   const isDown           = sourcePort ? sourcePort.operStatus === "down" : false;
 
-  const strokeColor = isDown ? "#ef4444" : configuredColor;
+  // ── Bandwidth threshold ─────────────────────────────────────────────────────
+  const bandwidthLimitBps = data?.bandwidthLimit ? data.bandwidthLimit * 1e6 : 0;
+  const peakBps           = Math.max(txBps, rxBps);
+  const utilizationPct    = bandwidthLimitBps > 0 && hasInterfaces ? (peakBps / bandwidthLimitBps) * 100 : 0;
+  const bwCritical        = utilizationPct >= 100;
+  const bwWarning         = utilizationPct >= 80 && !bwCritical;
+  const bwThresholdColor  = bwCritical ? "#ef4444" : bwWarning ? "#f59e0b" : null;
+
+  const strokeColor = isDown ? "#ef4444" : (bwThresholdColor ?? configuredColor);
   const strokeDash  = isDown ? "8 5"     : configuredDash;
 
   const totalBps = txBps + rxBps;
@@ -274,16 +283,30 @@ export function LinkEdge({
             zIndex: showBadge || cableTypeLabel ? 11 : 8,
             ...(showBadge || cableTypeLabel
               ? {
-                  background: isDown ? "#1a0808" : "#0c0f14",
-                  border: `1px solid ${isDown ? "#ef4444" : "#273244"}`,
+                  background: isDown
+                    ? "#1a0808"
+                    : bwCritical ? "rgba(239,68,68,0.10)"
+                    : bwWarning  ? "rgba(245,158,11,0.10)"
+                    : "#0c0f14",
+                  border: `1px solid ${
+                    isDown      ? "#ef4444"
+                    : bwCritical ? "#ef4444"
+                    : bwWarning  ? "#f59e0b"
+                    : "#273244"
+                  }`,
                   borderRadius: 4,
                   padding: "3px 8px",
                   minWidth: showBadge ? badgeW : "auto",
                   textAlign: "center" as const,
                   lineHeight: 1.4,
-                  ...(isDown
-                    ? { filter: "drop-shadow(0 0 4px rgba(239,68,68,0.35))" }
-                    : { boxShadow: "0 1px 5px rgba(0,0,0,.5)" }),
+                  boxShadow: bwCritical
+                    ? "0 0 6px rgba(239,68,68,0.4)"
+                    : bwWarning
+                    ? "0 0 6px rgba(245,158,11,0.35)"
+                    : isDown
+                    ? undefined
+                    : "0 1px 5px rgba(0,0,0,.5)",
+                  ...(isDown ? { filter: "drop-shadow(0 0 4px rgba(239,68,68,0.35))" } : {}),
                 }
               : { width: 24, height: 24 }),
           }}
@@ -304,7 +327,7 @@ export function LinkEdge({
               {cableTypeLabel ? (
                 <div
                   style={{
-                    color: "#fff",
+                    color: bwThresholdColor ?? "#fff",
                     fontSize: Math.round(badgeFontSize * 0.8),
                     fontWeight: 700,
                     letterSpacing: "0.04em",
@@ -321,6 +344,16 @@ export function LinkEdge({
                   <div style={{ color: "#60a5fa", fontSize: badgeFontSize, fontWeight: 600 }}>
                     RX: {formatBps(rxBps)}
                   </div>
+                  {bandwidthLimitBps > 0 && (
+                    <div style={{
+                      color: bwThresholdColor ?? "#6b7280",
+                      fontSize: Math.round(badgeFontSize * 0.8),
+                      fontWeight: bwThresholdColor ? 700 : 500,
+                      letterSpacing: "0.04em",
+                    }}>
+                      {Math.round(utilizationPct)}%
+                    </div>
+                  )}
                 </>
               )}
             </>
@@ -360,6 +393,19 @@ export function LinkEdge({
                   <span className="edge-tooltip-label edge-tooltip-rx">RX</span>
                   <span className="edge-tooltip-value">{formatBps(rxBps)}</span>
                 </div>
+                {bandwidthLimitBps > 0 && (
+                  <div className="edge-tooltip-row">
+                    <span className="edge-tooltip-label">Utilização</span>
+                    <span
+                      className="edge-tooltip-value"
+                      style={{ color: bwThresholdColor ?? undefined, fontWeight: bwThresholdColor ? 700 : undefined }}
+                    >
+                      {Math.round(utilizationPct)}% de {data!.bandwidthLimit! >= 1000
+                        ? `${data!.bandwidthLimit! / 1000} Gbps`
+                        : `${data!.bandwidthLimit} Mbps`}
+                    </span>
+                  </div>
+                )}
               </>
             )}
             {hasSignalData ? (

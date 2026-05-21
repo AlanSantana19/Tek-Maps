@@ -102,6 +102,7 @@ export interface TopologyEdge {
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
   signalHostId?: string;
+  bandwidthLimit?: number;
 }
 
 export interface Topology {

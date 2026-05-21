@@ -3427,3 +3427,56 @@ select {
   margin: 0;
   color: #9ca3af;
 }
+
+/* ── Dashboard infra alerts ──────────────────────────────────────────────── */
+.status-dot.bw-warning {
+  background: #b45309;
+}
+
+.event-row {
+  grid-template-columns: 10px minmax(100px, 1fr) auto auto;
+}
+
+.event-detail {
+  color: #6b7280;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.event-badge--danger {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+
+.event-badge--warning {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+}
+
+.event-badge--ok {
+  background: rgba(29, 154, 100, 0.12);
+  border: 1px solid #1d9a64;
+  color: #1d9a64;
+}
+
+.panel--danger h2 {
+  color: #ef4444;
+}
+
+.panel--bandwidth h2 {
+  color: #f59e0b;
+}

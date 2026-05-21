@@ -109,6 +109,7 @@ export interface Topology {
     signalTxMetricKey?: string;
     signalRxMetricKey?: string;
     signalHostId?: string;
+    bandwidthLimit?: number;
   }>;
 }
 

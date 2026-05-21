@@ -191,6 +191,7 @@ type LinkEdgeData = {
   signalHostId?: string;
   linkRole?: "primary" | "backup";
   showLinkRole?: boolean;
+  bandwidthLimit?: number;
 };
 
 type PaletteItem = {
@@ -287,6 +288,62 @@ export function App() {
   const snapshotsByHost = useMemo(() => new Map(hosts.map((host) => [host.hostId, host])), [hosts]);
   const alertsCount = hosts.reduce((total, host) => total + host.alerts.length, 0);
   const downHosts = hosts.filter((host) => host.status === "down").length;
+
+  const hostsInMaps = useMemo(() => {
+    const ids = new Set<string>();
+    for (const topology of topologies) {
+      for (const node of topology.nodes) {
+        if (node.hostId) ids.add(node.hostId);
+      }
+    }
+    return ids;
+  }, [topologies]);
+
+  const offlineHostsList = useMemo(
+    () => hosts.filter((h) => h.status === "down" && hostsInMaps.has(h.hostId)),
+    [hosts, hostsInMaps]
+  );
+
+  type BandwidthAlert = {
+    edgeId: string;
+    topologyName: string;
+    linkLabel?: string;
+    sourceHostName: string;
+    targetHostName?: string;
+    utilizationPct: number;
+    peakBps: number;
+    limitMbps: number;
+    level: "warning" | "critical";
+  };
+
+  const bandwidthAlerts = useMemo<BandwidthAlert[]>(() => {
+    const result: BandwidthAlert[] = [];
+    for (const topology of topologies) {
+      for (const edge of topology.edges) {
+        if (!edge.bandwidthLimit || !edge.sourceHostId || !edge.sourceOutInterface) continue;
+        const snap = snapshotsByHost.get(edge.sourceHostId);
+        const port = snap?.ports.find((p) => p.id === edge.sourceOutInterface);
+        if (!port) continue;
+        const peakBps = Math.max(port.outBps ?? 0, port.inBps ?? 0);
+        const pct = (peakBps / (edge.bandwidthLimit * 1e6)) * 100;
+        if (pct < 80) continue;
+        const srcHost = hosts.find((h) => h.hostId === edge.sourceHostId);
+        const dstHost = hosts.find((h) => h.hostId === edge.targetHostId);
+        result.push({
+          edgeId: edge.id,
+          topologyName: topology.name,
+          linkLabel: edge.label,
+          sourceHostName: srcHost?.visibleName ?? edge.sourceHostId ?? "?",
+          targetHostName: dstHost?.visibleName,
+          utilizationPct: pct,
+          peakBps,
+          limitMbps: edge.bandwidthLimit,
+          level: pct >= 100 ? "critical" : "warning",
+        });
+      }
+    }
+    return result.sort((a, b) => b.utilizationPct - a.utilizationPct);
+  }, [topologies, snapshotsByHost, hosts]);
   const visibleMenuIds = useMemo(() => {
     if (!currentPermissions || currentPermissions.fullAccess) {
       return new Set<SectionId>(menuItems.map((item) => item.id));
@@ -832,7 +889,15 @@ export function App() {
 
       <section className="content-shell">
         {activeSection === "dashboard" ? (
-          <Dashboard hosts={hosts} alertsCount={alertsCount} downHosts={downHosts} mapsCount={topologies.length} />
+          <Dashboard
+            hosts={hosts}
+            alertsCount={alertsCount}
+            downHosts={downHosts}
+            mapsCount={topologies.length}
+            offlineHostsList={offlineHostsList}
+            bandwidthAlerts={bandwidthAlerts}
+            topologies={topologies}
+          />
         ) : null}
 
         {activeSection === "editor" && editorMode === "maps" ? (
@@ -1262,16 +1327,42 @@ function BrandingPanel({
   );
 }
 
+type BandwidthAlertItem = {
+  edgeId: string;
+  topologyName: string;
+  linkLabel?: string;
+  sourceHostName: string;
+  targetHostName?: string;
+  utilizationPct: number;
+  peakBps: number;
+  limitMbps: number;
+  level: "warning" | "critical";
+};
+
+type RecentEvent = {
+  id: string;
+  type: "host_down" | "host_up" | "bw_warning" | "bw_critical";
+  label: string;
+  detail?: string;
+  timestamp: Date;
+};
+
 function Dashboard({
   hosts,
   alertsCount,
   downHosts,
-  mapsCount
+  mapsCount,
+  offlineHostsList,
+  bandwidthAlerts,
+  topologies,
 }: {
   hosts: DeviceSnapshot[];
   alertsCount: number;
   downHosts: number;
   mapsCount: number;
+  offlineHostsList: DeviceSnapshot[];
+  bandwidthAlerts: BandwidthAlertItem[];
+  topologies: Array<Topology & { id: string }>;
 }) {
   const syncTimes = hosts.map((host) => host.syncedAt).sort();
   const latestSync = syncTimes[syncTimes.length - 1];
@@ -1287,6 +1378,82 @@ function Dashboard({
   const totalPages = Math.max(1, Math.ceil(todayLogs.length / LOGS_PER_PAGE));
   const pagedLogs = todayLogs.slice((activityPage - 1) * LOGS_PER_PAGE, activityPage * LOGS_PER_PAGE);
 
+  const hostToMaps = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const topology of topologies) {
+      for (const node of topology.nodes) {
+        if (!node.hostId) continue;
+        const existing = map.get(node.hostId) ?? [];
+        if (!existing.includes(topology.name)) {
+          map.set(node.hostId, [...existing, topology.name]);
+        }
+      }
+    }
+    return map;
+  }, [topologies]);
+
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
+  const [eventsPage, setEventsPage] = useState(1);
+  const prevHostStatusRef = useRef(new Map<string, string>());
+  const prevBwAlertEdgesRef = useRef(new Set<string>());
+
+  const EVENTS_PER_PAGE = 10;
+  const totalEventPages = Math.max(1, Math.ceil(recentEvents.length / EVENTS_PER_PAGE));
+  const pagedEvents = recentEvents.slice((eventsPage - 1) * EVENTS_PER_PAGE, eventsPage * EVENTS_PER_PAGE);
+
+  useEffect(() => {
+    const prev = prevHostStatusRef.current;
+    const events: RecentEvent[] = [];
+    for (const host of hosts) {
+      const prevStatus = prev.get(host.hostId);
+      if (prevStatus !== undefined && prevStatus !== host.status) {
+        const maps = hostToMaps.get(host.hostId) ?? [];
+        const time = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        const detail = [...maps, time].join(" · ");
+        events.push({
+          id: `${host.hostId}-${host.status}-${Date.now()}`,
+          type: host.status === "down" ? "host_down" : "host_up",
+          label: host.visibleName,
+          detail,
+          timestamp: new Date()
+        });
+      }
+      prev.set(host.hostId, host.status);
+    }
+    if (events.length > 0) {
+      setRecentEvents((current) => [...events, ...current]);
+      setEventsPage(1);
+    }
+  }, [hosts, hostToMaps]);
+
+  useEffect(() => {
+    const prev = prevBwAlertEdgesRef.current;
+    const events: RecentEvent[] = [];
+    const currentIds = new Set<string>();
+    for (const alert of bandwidthAlerts) {
+      currentIds.add(alert.edgeId);
+      if (!prev.has(alert.edgeId)) {
+        const linkName = alert.linkLabel
+          ? alert.linkLabel
+          : `${alert.sourceHostName}${alert.targetHostName ? ` → ${alert.targetHostName}` : ""}`;
+        const limit = alert.limitMbps >= 1000 ? `${alert.limitMbps / 1000}Gbps` : `${alert.limitMbps}Mbps`;
+        const time = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        events.push({
+          id: `${alert.edgeId}-bw-${Date.now()}`,
+          type: alert.level === "critical" ? "bw_critical" : "bw_warning",
+          label: linkName,
+          detail: `${Math.round(alert.utilizationPct)}% de ${limit} · ${alert.topologyName} · ${time}`,
+          timestamp: new Date()
+        });
+      }
+    }
+    prevBwAlertEdgesRef.current = currentIds;
+    if (events.length > 0) {
+      setRecentEvents((current) => [...events, ...current]);
+      setEventsPage(1);
+    }
+  }, [bandwidthAlerts]);
+
   useEffect(() => {
     void getActivityLog().then(setActivityLog).catch(() => {});
     void getOnlineUsers().then(setOnlineUsers).catch(() => {});
@@ -1296,7 +1463,7 @@ function Dashboard({
     return () => clearInterval(interval);
   }, []);
 
-  // Reset diário: limpa a lista e volta para página 1 quando virar o dia
+  // Reset diário: limpa as listas e volta para página 1 quando virar o dia
   useEffect(() => {
     const now = new Date();
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
@@ -1304,6 +1471,8 @@ function Dashboard({
     const timer = setTimeout(() => {
       setActivityLog([]);
       setActivityPage(1);
+      setRecentEvents([]);
+      setEventsPage(1);
     }, msUntilMidnight);
     return () => clearTimeout(timer);
   }, []);
@@ -1318,6 +1487,52 @@ function Dashboard({
         <SummaryCard label="Indisponiveis" value={downHosts} tone={downHosts ? "danger" : "ok"} />
         <SummaryCard label="Ultima sync" value={latestSync ? new Date(latestSync).toLocaleString() : "Sem dados"} />
       </div>
+      {(offlineHostsList.length > 0 || bandwidthAlerts.length > 0) && (
+        <div className="dashboard-panels">
+          {offlineHostsList.length > 0 && (
+            <section className="panel panel--danger">
+              <h2>Hosts offline</h2>
+              <div className="event-list">
+                {offlineHostsList.map((host) => {
+                  const mapNames = hostToMaps.get(host.hostId) ?? [];
+                  return (
+                    <div className="event-row" key={host.hostId}>
+                      <span className="status-dot down" />
+                      <strong>{host.visibleName}</strong>
+                      <span className="event-detail">{mapNames.join(", ")}</span>
+                      <span className="event-badge event-badge--danger">OFFLINE</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+          {bandwidthAlerts.length > 0 && (
+            <section className="panel panel--bandwidth">
+              <h2>Alertas de banda</h2>
+              <div className="event-list">
+                {bandwidthAlerts.map((alert) => (
+                  <div className="event-row" key={alert.edgeId}>
+                    <span className={`status-dot ${alert.level === "critical" ? "down" : "bw-warning"}`} />
+                    <strong>
+                      {alert.linkLabel
+                        ? alert.linkLabel
+                        : `${alert.sourceHostName}${alert.targetHostName ? ` → ${alert.targetHostName}` : ""}`}
+                    </strong>
+                    <span className="event-detail">{alert.topologyName}</span>
+                    <span className={`event-badge ${alert.level === "critical" ? "event-badge--danger" : "event-badge--warning"}`}>
+                      {Math.round(alert.utilizationPct)}%
+                      {" "}de{" "}
+                      {alert.limitMbps >= 1000 ? `${alert.limitMbps / 1000}Gbps` : `${alert.limitMbps}Mbps`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
       <div className="dashboard-panels">
         <section className="panel">
           <h2>Online agora</h2>
@@ -1377,15 +1592,53 @@ function Dashboard({
       <section className="panel">
         <h2>Eventos recentes</h2>
         <div className="event-list">
-          {hosts.flatMap((host) => host.alerts.map((alert) => ({ host, alert }))).slice(0, 8).map(({ host, alert }) => (
-            <div className="event-row" key={alert.eventId}>
-              <span className={`status-dot ${host.status}`} />
-              <strong>{host.visibleName}</strong>
-              <span>{alert.name}</span>
-            </div>
-          ))}
-          {alertsCount === 0 ? <p className="empty-state">Nenhum alerta ativo encontrado.</p> : null}
+          {recentEvents.length === 0 ? (
+            <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
+          ) : (
+            pagedEvents.map((event) => (
+              <div className="event-row" key={event.id}>
+                <span className={`status-dot ${
+                  event.type === "host_down" ? "down"
+                  : event.type === "host_up" ? "up"
+                  : event.type === "bw_critical" ? "down"
+                  : "bw-warning"
+                }`} />
+                <strong>{event.label}</strong>
+                <span className="event-detail">{event.detail ?? ""}</span>
+                <span className={`event-badge ${
+                  event.type === "host_down" ? "event-badge--danger"
+                  : event.type === "host_up" ? "event-badge--ok"
+                  : event.type === "bw_critical" ? "event-badge--danger"
+                  : "event-badge--warning"
+                }`}>
+                  {event.type === "host_down" ? "OFFLINE"
+                   : event.type === "host_up" ? "ONLINE"
+                   : event.type === "bw_critical" ? "CRITICO"
+                   : "ATENCAO"}
+                </span>
+              </div>
+            ))
+          )}
         </div>
+        {totalEventPages > 1 && (
+          <div className="activity-pagination">
+            <button
+              className="activity-page-btn"
+              onClick={() => setEventsPage((p) => Math.max(1, p - 1))}
+              disabled={eventsPage === 1}
+            >
+              Anterior
+            </button>
+            <span className="activity-page-info">{eventsPage} / {totalEventPages}</span>
+            <button
+              className="activity-page-btn"
+              onClick={() => setEventsPage((p) => Math.min(totalEventPages, p + 1))}
+              disabled={eventsPage === totalEventPages}
+            >
+              Proxima
+            </button>
+          </div>
+        )}
       </section>
     </section>
   );
@@ -1693,6 +1946,8 @@ function TopologyEditor({
     signalHostId: "",
     linkRole: "" as "primary" | "backup" | "",
     showLinkRole: true,
+    bandwidthLimit: "" as number | "",
+    bandwidthLimitUnit: "mbps" as "mbps" | "gbps",
   });
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
   const [zabbixServers, setZabbixServers] = useState<ZabbixServerConfig[]>([]);
@@ -1880,6 +2135,10 @@ function TopologyEditor({
       signalHostId: data?.signalHostId ?? data?.sourceHostId ?? "",
       linkRole: (data?.linkRole ?? "") as "primary" | "backup" | "",
       showLinkRole: data?.showLinkRole ?? true,
+      bandwidthLimitUnit: (data?.bandwidthLimit && data.bandwidthLimit >= 1000 && data.bandwidthLimit % 1 === 0) ? "gbps" : "mbps",
+      bandwidthLimit: data?.bandwidthLimit
+        ? (data.bandwidthLimit >= 1000 && data.bandwidthLimit % 1 === 0 ? data.bandwidthLimit / 1000 : data.bandwidthLimit)
+        : "",
     });
   }
 
@@ -1920,6 +2179,9 @@ function TopologyEditor({
       signalHostId: linkForm.signalHostId || draftSourceNode?.data.hostId,
       linkRole: linkForm.linkRole || undefined,
       showLinkRole: linkForm.showLinkRole,
+      bandwidthLimit: linkForm.bandwidthLimit !== ""
+        ? Number(linkForm.bandwidthLimit) * (linkForm.bandwidthLimitUnit === "gbps" ? 1000 : 1)
+        : undefined,
     };
 
     if (selectedEdgeId) {
@@ -2837,6 +3099,38 @@ function TopologyEditor({
                   <span>Exibir badge de papel no cabo</span>
                 </label>
               )}
+              <label>
+                Limite de banda
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <input
+                    type="number"
+                    min={0}
+                    step={linkForm.bandwidthLimitUnit === "gbps" ? 0.1 : 1}
+                    placeholder={linkForm.bandwidthLimitUnit === "gbps" ? "Ex: 1, 10" : "Ex: 100, 1000"}
+                    value={linkForm.bandwidthLimit}
+                    onChange={(e) => setLinkForm({ ...linkForm, bandwidthLimit: e.target.value === "" ? "" : Number(e.target.value) })}
+                    style={{ flex: 1 }}
+                  />
+                  <div className="cable-routing-toggle" style={{ flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className={`cable-routing-btn${linkForm.bandwidthLimitUnit === "mbps" ? " active" : ""}`}
+                      onClick={() => {
+                        const v = linkForm.bandwidthLimit !== "" ? Number(linkForm.bandwidthLimit) * 1000 : "";
+                        setLinkForm({ ...linkForm, bandwidthLimitUnit: "mbps", bandwidthLimit: v });
+                      }}
+                    >Mbps</button>
+                    <button
+                      type="button"
+                      className={`cable-routing-btn${linkForm.bandwidthLimitUnit === "gbps" ? " active" : ""}`}
+                      onClick={() => {
+                        const v = linkForm.bandwidthLimit !== "" ? Number(linkForm.bandwidthLimit) / 1000 : "";
+                        setLinkForm({ ...linkForm, bandwidthLimitUnit: "gbps", bandwidthLimit: v });
+                      }}
+                    >Gbps</button>
+                  </div>
+                </div>
+              </label>
               <label className="element-checkbox">
                 <input type="checkbox" checked={linkForm.showTraffic} onChange={(event) => setLinkForm({ ...linkForm, showTraffic: event.target.checked })} />
                 <span>Exibir trafego no cabo</span>
@@ -4675,7 +4969,8 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       signalLabel: edge.signalLabel,
       signalTxMetricKey: edge.signalTxMetricKey,
       signalRxMetricKey: edge.signalRxMetricKey,
-      signalHostId: edge.signalHostId
+      signalHostId: edge.signalHostId,
+      bandwidthLimit: edge.bandwidthLimit,
     }
   });
 }
@@ -4720,7 +5015,8 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     signalLabel: data?.signalLabel,
     signalTxMetricKey: data?.signalTxMetricKey,
     signalRxMetricKey: data?.signalRxMetricKey,
-    signalHostId: data?.signalHostId
+    signalHostId: data?.signalHostId,
+    bandwidthLimit: data?.bandwidthLimit,
   };
 }
 
@@ -4770,6 +5066,8 @@ function defaultLinkForm() {
     signalHostId: "",
     linkRole: "" as "primary" | "backup" | "",
     showLinkRole: true,
+    bandwidthLimit: "" as number | "",
+    bandwidthLimitUnit: "mbps" as "mbps" | "gbps",
   };
 }
 
