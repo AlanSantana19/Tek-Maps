@@ -13,6 +13,7 @@ import { AccessUserRepository } from "./repositories/AccessUserRepository.js";
 import { ActivityRepository } from "./repositories/ActivityRepository.js";
 import { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import { MapPermissionRepository } from "./repositories/MapPermissionRepository.js";
+import { RecentEventRepository } from "./repositories/RecentEventRepository.js";
 import { SettingsRepository } from "./repositories/SettingsRepository.js";
 import { TopologyRepository } from "./repositories/TopologyRepository.js";
 import { ZabbixCacheRepository } from "./repositories/ZabbixCacheRepository.js";
@@ -34,11 +35,12 @@ const accessGroupRepository = new AccessGroupRepository(pool);
 const customIconRepository = new CustomIconRepository(pool);
 const mapPermissionRepository = new MapPermissionRepository(pool);
 const activityRepository = new ActivityRepository(pool);
+const recentEventRepository = new RecentEventRepository(pool);
 
 const server = http.createServer(app);
 const hub = new Hub(server);
 
-app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository, mapPermissionRepository, activityRepository, hub));
+app.use("/api", createRoutes(topologyRepository, cacheRepository, settingsRepository, accessUserRepository, customIconRepository, accessGroupRepository, mapPermissionRepository, activityRepository, hub, recentEventRepository));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ error }, "request failed");
   res.status(500).json({ error: "internal_error" });

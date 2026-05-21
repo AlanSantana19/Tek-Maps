@@ -288,6 +288,22 @@ export async function getOnlineUsers() {
   return apiGet<OnlineUser[]>("/api/activity/online");
 }
 
+export interface RecentEventDto {
+  id: string;
+  type: string;
+  label: string;
+  detail?: string;
+  createdAt: string;
+}
+
+export async function getRecentEvents() {
+  return apiGet<RecentEventDto[]>("/api/events/recent");
+}
+
+export async function saveRecentEvent(event: { id: string; type: string; label: string; detail?: string }) {
+  return apiSend<{ ok: boolean }>("/api/events/recent", "POST", event);
+}
+
 export function openSnapshotsSocket(
   onMessage: (snapshots: DeviceSnapshot[]) => void,
   onConnected?: (connected: boolean) => void

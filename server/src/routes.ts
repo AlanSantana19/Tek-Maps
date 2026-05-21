@@ -10,6 +10,7 @@ import type { AccessUserRepository } from "./repositories/AccessUserRepository.j
 import type { ActivityRepository } from "./repositories/ActivityRepository.js";
 import type { CustomIconRepository } from "./repositories/CustomIconRepository.js";
 import type { MapPermissionRepository } from "./repositories/MapPermissionRepository.js";
+import type { RecentEventRepository } from "./repositories/RecentEventRepository.js";
 import type { SettingsRepository } from "./repositories/SettingsRepository.js";
 import type { TopologyRepository } from "./repositories/TopologyRepository.js";
 import type { ZabbixCacheRepository } from "./repositories/ZabbixCacheRepository.js";
@@ -174,7 +175,8 @@ export function createRoutes(
   groups: AccessGroupRepository,
   mapPermissions: MapPermissionRepository,
   activity: ActivityRepository,
-  hub: Hub
+  hub: Hub,
+  recentEvents: RecentEventRepository
 ) {
   const router = express.Router();
   const otp = new OTP();
@@ -1164,6 +1166,33 @@ export function createRoutes(
 
   router.get("/activity/online", (_req, res) => {
     res.json(hub.getOnlineUsers());
+  });
+
+  router.get("/events/recent", async (_req, res, next) => {
+    try {
+      res.json(await recentEvents.list());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/events/recent", async (req, res, next) => {
+    try {
+      const { id, type, label, detail } = req.body as { id?: unknown; type?: unknown; label?: unknown; detail?: unknown };
+      if (typeof id !== "string" || typeof type !== "string" || typeof label !== "string") {
+        res.status(400).json({ error: "invalid_event" });
+        return;
+      }
+      const allowed = ["host_down", "host_up", "bw_warning", "bw_critical"];
+      if (!allowed.includes(type)) {
+        res.status(400).json({ error: "invalid_event_type" });
+        return;
+      }
+      await recentEvents.insert({ id, type, label, detail: typeof detail === "string" ? detail : undefined });
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

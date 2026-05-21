@@ -145,6 +145,16 @@ CREATE TABLE IF NOT EXISTS activity_log (
 
 CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at DESC);
 
+CREATE TABLE IF NOT EXISTS recent_events (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  label TEXT NOT NULL,
+  detail TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recent_events_created_at ON recent_events(created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_agm_user_id          ON access_group_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_agm_group_id         ON access_group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_agmp_group_id        ON access_group_map_permissions(group_id);

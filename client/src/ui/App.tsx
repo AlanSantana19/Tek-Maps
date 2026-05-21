@@ -58,6 +58,8 @@ import {
   createCustomIcon,
   getActivityLog,
   getAppVersion,
+  getRecentEvents,
+  saveRecentEvent,
   getCurrentUserPermissions,
   getLoginLogoConfig,
   getFaviconConfig,
@@ -898,6 +900,7 @@ export function App() {
             offlineHostsList={offlineHostsList}
             bandwidthAlerts={bandwidthAlerts}
             topologies={topologies}
+            wsConnected={wsConnected}
           />
         ) : null}
 
@@ -1356,6 +1359,7 @@ function Dashboard({
   offlineHostsList,
   bandwidthAlerts,
   topologies,
+  wsConnected,
 }: {
   hosts: DeviceSnapshot[];
   alertsCount: number;
@@ -1364,6 +1368,7 @@ function Dashboard({
   offlineHostsList: DeviceSnapshot[];
   bandwidthAlerts: BandwidthAlertItem[];
   topologies: Array<Topology & { id: string }>;
+  wsConnected: boolean;
 }) {
   const syncTimes = hosts.map((host) => host.syncedAt).sort();
   const latestSync = syncTimes[syncTimes.length - 1];
@@ -1393,19 +1398,7 @@ function Dashboard({
     return map;
   }, [topologies]);
 
-  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>(() => {
-    try {
-      const stored = localStorage.getItem("tek-map-recent-events");
-      if (!stored) return [];
-      const parsed = JSON.parse(stored) as Array<Omit<RecentEvent, "timestamp"> & { timestamp: string }>;
-      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-      return parsed
-        .filter((e) => new Date(e.timestamp).getTime() > cutoff)
-        .map((e) => ({ ...e, timestamp: new Date(e.timestamp) }));
-    } catch {
-      return [];
-    }
-  });
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
   const [eventsPage, setEventsPage] = useState(1);
   const prevHostStatusRef = useRef(new Map<string, string>());
   const prevBwAlertEdgesRef = useRef(new Set<string>());
@@ -1413,12 +1406,6 @@ function Dashboard({
   const EVENTS_PER_PAGE = 10;
   const totalEventPages = Math.max(1, Math.ceil(recentEvents.length / EVENTS_PER_PAGE));
   const pagedEvents = recentEvents.slice((eventsPage - 1) * EVENTS_PER_PAGE, eventsPage * EVENTS_PER_PAGE);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("tek-map-recent-events", JSON.stringify(recentEvents));
-    } catch {}
-  }, [recentEvents]);
 
   useEffect(() => {
     const prev = prevHostStatusRef.current;
@@ -1454,6 +1441,9 @@ function Dashboard({
       prev.set(host.hostId, host.status);
     }
     if (events.length > 0) {
+      for (const ev of events) {
+        void saveRecentEvent({ id: ev.id, type: ev.type, label: ev.label, detail: ev.detail }).catch(() => {});
+      }
       setRecentEvents((current) => [...events, ...current]);
       setEventsPage(1);
     }
@@ -1482,6 +1472,9 @@ function Dashboard({
     }
     prevBwAlertEdgesRef.current = currentIds;
     if (events.length > 0) {
+      for (const ev of events) {
+        void saveRecentEvent({ id: ev.id, type: ev.type, label: ev.label, detail: ev.detail }).catch(() => {});
+      }
       setRecentEvents((current) => [...events, ...current]);
       setEventsPage(1);
     }
@@ -1489,12 +1482,18 @@ function Dashboard({
 
   useEffect(() => {
     void getActivityLog().then(setActivityLog).catch(() => {});
+    void getRecentEvents().then((rows) => {
+      setRecentEvents(rows.map((r) => ({ ...r, type: r.type as RecentEvent["type"], timestamp: new Date(r.createdAt) })));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     void getOnlineUsers().then(setOnlineUsers).catch(() => {});
     const interval = setInterval(() => {
       void getOnlineUsers().then(setOnlineUsers).catch(() => {});
-    }, 5_000);
+    }, 2_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [wsConnected]);
 
   // Reset diário: limpa as listas e volta para página 1 quando virar o dia
   useEffect(() => {
