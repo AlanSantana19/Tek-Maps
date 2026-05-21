@@ -402,6 +402,11 @@ select {
   grid-template-columns: 1fr 2fr;
   gap: 14px;
   margin-bottom: 14px;
+  align-items: start;
+}
+
+.dashboard-panels--3col {
+  grid-template-columns: 1fr 1fr 2fr;
 }
 
 .activity-list {
@@ -436,8 +441,8 @@ select {
   grid-template-columns: 10px auto 1fr auto;
 }
 
-.activity-name { font-weight: 500; }
-.activity-action { color: #91a1a9; }
+.activity-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-action { color: #91a1a9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .activity-time { color: #91a1a9; font-size: 12px; white-space: nowrap; }
 
 .activity-pagination {
@@ -3046,7 +3051,8 @@ select {
   .permission-layout,
   .branding-layout,
   .summary-grid,
-  .dashboard-panels {
+  .dashboard-panels,
+  .dashboard-panels--3col {
     grid-template-columns: 1fr;
   }
 

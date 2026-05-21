@@ -1527,7 +1527,7 @@ function Dashboard({
         </div>
       )}
 
-      <div className="dashboard-panels">
+      <div className="dashboard-panels dashboard-panels--3col">
         <section className="panel">
           <h2>Online agora</h2>
           <div className="activity-list">
@@ -1543,6 +1543,45 @@ function Dashboard({
               ))
             )}
           </div>
+        </section>
+        <section className="panel">
+          <h2>Eventos recentes</h2>
+          <div className="event-list">
+            {recentEvents.length === 0 ? (
+              <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
+            ) : (
+              pagedEvents.map((event) => (
+                <div className="event-row" key={event.id}>
+                  <span className={`status-dot ${
+                    event.type === "host_down" ? "down"
+                    : event.type === "host_up" ? "up"
+                    : event.type === "bw_critical" ? "down"
+                    : "bw-warning"
+                  }`} />
+                  <strong>{event.label}</strong>
+                  <span className="event-detail">{event.detail ?? ""}</span>
+                  <span className={`event-badge ${
+                    event.type === "host_down" ? "event-badge--danger"
+                    : event.type === "host_up" ? "event-badge--ok"
+                    : event.type === "bw_critical" ? "event-badge--danger"
+                    : "event-badge--warning"
+                  }`}>
+                    {event.type === "host_down" ? "OFFLINE"
+                     : event.type === "host_up" ? "ONLINE"
+                     : event.type === "bw_critical" ? "CRITICO"
+                     : "ATENCAO"}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+          {totalEventPages > 1 && (
+            <div className="activity-pagination">
+              <button className="activity-page-btn" onClick={() => setEventsPage((p) => Math.max(1, p - 1))} disabled={eventsPage === 1}>Anterior</button>
+              <span className="activity-page-info">{eventsPage} / {totalEventPages}</span>
+              <button className="activity-page-btn" onClick={() => setEventsPage((p) => Math.min(totalEventPages, p + 1))} disabled={eventsPage === totalEventPages}>Proxima</button>
+            </div>
+          )}
         </section>
         <section className="panel">
           <h2>Atividade recente</h2>
@@ -1562,78 +1601,13 @@ function Dashboard({
           </div>
           {totalPages > 1 && (
             <div className="activity-pagination">
-              <button
-                className="activity-page-btn"
-                onClick={() => setActivityPage((p) => Math.max(1, p - 1))}
-                disabled={activityPage === 1}
-              >
-                Anterior
-              </button>
-              <span className="activity-page-info">
-                {activityPage} / {totalPages}
-              </span>
-              <button
-                className="activity-page-btn"
-                onClick={() => setActivityPage((p) => Math.min(totalPages, p + 1))}
-                disabled={activityPage === totalPages}
-              >
-                Próxima
-              </button>
+              <button className="activity-page-btn" onClick={() => setActivityPage((p) => Math.max(1, p - 1))} disabled={activityPage === 1}>Anterior</button>
+              <span className="activity-page-info">{activityPage} / {totalPages}</span>
+              <button className="activity-page-btn" onClick={() => setActivityPage((p) => Math.min(totalPages, p + 1))} disabled={activityPage === totalPages}>Proxima</button>
             </div>
           )}
         </section>
       </div>
-      <section className="panel">
-        <h2>Eventos recentes</h2>
-        <div className="event-list">
-          {recentEvents.length === 0 ? (
-            <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
-          ) : (
-            pagedEvents.map((event) => (
-              <div className="event-row" key={event.id}>
-                <span className={`status-dot ${
-                  event.type === "host_down" ? "down"
-                  : event.type === "host_up" ? "up"
-                  : event.type === "bw_critical" ? "down"
-                  : "bw-warning"
-                }`} />
-                <strong>{event.label}</strong>
-                <span className="event-detail">{event.detail ?? ""}</span>
-                <span className={`event-badge ${
-                  event.type === "host_down" ? "event-badge--danger"
-                  : event.type === "host_up" ? "event-badge--ok"
-                  : event.type === "bw_critical" ? "event-badge--danger"
-                  : "event-badge--warning"
-                }`}>
-                  {event.type === "host_down" ? "OFFLINE"
-                   : event.type === "host_up" ? "ONLINE"
-                   : event.type === "bw_critical" ? "CRITICO"
-                   : "ATENCAO"}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-        {totalEventPages > 1 && (
-          <div className="activity-pagination">
-            <button
-              className="activity-page-btn"
-              onClick={() => setEventsPage((p) => Math.max(1, p - 1))}
-              disabled={eventsPage === 1}
-            >
-              Anterior
-            </button>
-            <span className="activity-page-info">{eventsPage} / {totalEventPages}</span>
-            <button
-              className="activity-page-btn"
-              onClick={() => setEventsPage((p) => Math.min(totalEventPages, p + 1))}
-              disabled={eventsPage === totalEventPages}
-            >
-              Proxima
-            </button>
-          </div>
-        )}
-      </section>
     </section>
   );
 }
