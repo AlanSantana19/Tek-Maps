@@ -738,6 +738,7 @@ export function App() {
         id: selectedTopology.id,
         name: selectedTopology.name,
         zabbixServerId: selectedTopology.zabbixServerId,
+        zabbixServerIds: selectedTopology.zabbixServerIds,
         nodes: nodes.map(fromFlowNode),
         edges: edges.map(fromFlowEdge)
       });
@@ -911,7 +912,7 @@ export function App() {
         {activeSection === "editor" && editorMode === "canvas" ? (
           <TopologyEditor
             topologyName={selectedTopology.name}
-            topologyZabbixServerId={selectedTopology.zabbixServerId}
+            topologyZabbixServerIds={selectedTopology.zabbixServerIds ?? (selectedTopology.zabbixServerId ? [selectedTopology.zabbixServerId] : [])}
             snapshotsByHost={snapshotsByHost}
             hosts={hosts}
             nodes={nodes}
@@ -1622,7 +1623,7 @@ function EditorMaps({
   onOpenTopology: (topology: Topology & { id: string }) => void;
 }) {
   const [servers, setServers] = useState<ZabbixServerConfig[]>([]);
-  const [form, setForm] = useState({ name: "", topologyType: "" as "" | "isp" | "corporate", zabbixServerId: "" });
+  const [form, setForm] = useState({ name: "", topologyType: "" as "" | "isp" | "corporate", zabbixServerIds: [] as string[] });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [savingMap, setSavingMap] = useState(false);
@@ -1640,8 +1641,8 @@ function EditorMaps({
 
   async function handleSaveMap(event: FormEvent) {
     event.preventDefault();
-    if (!form.name.trim() || !form.zabbixServerId) {
-      setStatus("Informe servidor Zabbix e identificacao do mapa.");
+    if (!form.name.trim() || form.zabbixServerIds.length === 0) {
+      setStatus("Informe ao menos um servidor Zabbix e a identificacao do mapa.");
       return;
     }
 
@@ -1653,7 +1654,7 @@ function EditorMaps({
         id: editingId ?? undefined,
         name: form.name.trim(),
         topologyType: form.topologyType || undefined,
-        zabbixServerId: form.zabbixServerId,
+        zabbixServerIds: form.zabbixServerIds,
         nodes: current?.nodes ?? [],
         edges: current?.edges ?? []
       });
@@ -1661,7 +1662,7 @@ function EditorMaps({
         ? topologies.map((topology) => topology.id === saved.id ? saved : topology)
         : [saved, ...topologies]);
       setEditingId(null);
-      setForm({ name: "", topologyType: "", zabbixServerId: "" });
+      setForm({ name: "", topologyType: "", zabbixServerIds: [] });
       setStatus(editingId ? "Mapa atualizado." : "Mapa salvo. Use Abrir para editar a topologia.");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Falha ao salvar mapa.");
@@ -1672,7 +1673,7 @@ function EditorMaps({
 
   function editMap(topology: Topology & { id: string }) {
     setEditingId(topology.id);
-    setForm({ name: topology.name, topologyType: topology.topologyType ?? "", zabbixServerId: topology.zabbixServerId ?? "" });
+    setForm({ name: topology.name, topologyType: topology.topologyType ?? "", zabbixServerIds: topology.zabbixServerIds ?? (topology.zabbixServerId ? [topology.zabbixServerId] : []) });
     setStatus(null);
   }
 
@@ -1688,7 +1689,7 @@ function EditorMaps({
       onTopologiesChange(topologies.filter((item) => item.id !== topology.id));
       if (editingId === topology.id) {
         setEditingId(null);
-        setForm({ name: "", topologyType: "", zabbixServerId: "" });
+        setForm({ name: "", topologyType: "", zabbixServerIds: [] });
       }
       setStatus("Mapa removido.");
     } catch (err) {
@@ -1710,12 +1711,17 @@ function EditorMaps({
           <h2>{editingId ? "Editar mapa" : "Novo mapa"}</h2>
           <label>
             Servidor Zabbix
-            <select value={form.zabbixServerId} onChange={(event) => setForm({ ...form, zabbixServerId: event.target.value })}>
-              <option value="">Selecione um servidor</option>
+            <select
+              multiple
+              value={form.zabbixServerIds}
+              onChange={(event) => setForm({ ...form, zabbixServerIds: Array.from(event.target.selectedOptions, (opt) => opt.value) })}
+              size={Math.min(Math.max(servers.length, 2), 5)}
+            >
               {servers.map((server) => (
                 <option key={server.id} value={server.id ?? ""}>{server.name}</option>
               ))}
             </select>
+            <small className="field-hint">Segure Ctrl para selecionar mais de um</small>
           </label>
           <label>
             Identificacao do mapa
@@ -1733,7 +1739,7 @@ function EditorMaps({
             {editingId ? (
               <button className="secondary-button" type="button" onClick={() => {
                 setEditingId(null);
-                setForm({ name: "", topologyType: "", zabbixServerId: "" });
+                setForm({ name: "", topologyType: "", zabbixServerIds: [] });
               }}>
                 Cancelar
               </button>
@@ -1765,7 +1771,7 @@ function EditorMaps({
                         </span>
                       ) : null}
                     </div>
-                    <span>{serverName(topology.zabbixServerId)}</span>
+                    <span>{topology.zabbixServerIds && topology.zabbixServerIds.length > 0 ? topology.zabbixServerIds.map((sid) => serverName(sid)).join(", ") : serverName(topology.zabbixServerId)}</span>
                     <small>{topology.nodes.length} dispositivos - {topology.edges.length} links</small>
                   </div>
                   <div className="row-actions">
@@ -1788,7 +1794,7 @@ function EditorMaps({
 
 function TopologyEditor({
   topologyName,
-  topologyZabbixServerId,
+  topologyZabbixServerIds,
   snapshotsByHost,
   hosts,
   nodes,
@@ -1813,7 +1819,7 @@ function TopologyEditor({
   onConnect
 }: {
   topologyName: string;
-  topologyZabbixServerId?: string;
+  topologyZabbixServerIds: string[];
   snapshotsByHost: Map<string, DeviceSnapshot>;
   hosts: DeviceSnapshot[];
   nodes: DeviceFlowNode[];
@@ -1922,7 +1928,9 @@ function TopologyEditor({
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const configNode = nodes.find((node) => node.id === configNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
-  const filteredHosts = deviceForm.zabbixServerId ? hosts.filter((host) => host.zabbixServerId === deviceForm.zabbixServerId) : hosts;
+  const [hostSearch, setHostSearch] = useState("");
+  const filteredHosts = (deviceForm.zabbixServerId ? hosts.filter((host) => host.zabbixServerId === deviceForm.zabbixServerId) : hosts)
+    .filter((host) => !hostSearch.trim() || `${host.visibleName} ${host.hostName}`.toLowerCase().includes(hostSearch.trim().toLowerCase()));
   const selectedHost = filteredHosts.find((host) => host.hostId === deviceForm.hostId) ?? hosts.find((host) => host.hostId === deviceForm.hostId);
   const statusItems = buildStatusItems(selectedHost);
   const draftSourceNode = nodes.find((node) => node.id === (selectedEdge?.source ?? linkDraft.sourceId));
@@ -1951,12 +1959,14 @@ function TopologyEditor({
     if (!hostPickerOpen || hostPickerServerId || zabbixServers.length === 0) {
       return;
     }
-    const lockedServer = topologyZabbixServerId ? zabbixServers.find((s) => s.id === topologyZabbixServerId) : undefined;
-    const defaultServer = lockedServer ?? zabbixServers.find((server) => server.active) ?? zabbixServers[0];
+    const allowedServers = topologyZabbixServerIds.length > 0
+      ? zabbixServers.filter((s) => topologyZabbixServerIds.includes(s.id ?? ""))
+      : zabbixServers;
+    const defaultServer = allowedServers.find((server) => server.active) ?? allowedServers[0];
     if (defaultServer?.id) {
       void loadHostPickerHosts(defaultServer.id);
     }
-  }, [hostPickerOpen, hostPickerServerId, zabbixServers, topologyZabbixServerId]);
+  }, [hostPickerOpen, hostPickerServerId, zabbixServers, topologyZabbixServerIds]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -2272,7 +2282,7 @@ function TopologyEditor({
       color: node.data.color ?? "#ffffff",
       showBackground: node.data.showBackground ?? true,
       showIp: node.data.showIp ?? false,
-      zabbixServerId: node.data.zabbixServerId ?? topologyZabbixServerId ?? "",
+      zabbixServerId: node.data.zabbixServerId ?? (topologyZabbixServerIds.length === 1 ? topologyZabbixServerIds[0] : "") ?? "",
       statusItemKey: node.data.statusItemKey ?? "",
       onlineValue: node.data.onlineValue ?? "1",
       offlineValue: node.data.offlineValue ?? "2",
@@ -2487,17 +2497,20 @@ function TopologyEditor({
           <div className="host-picker-controls">
             <label>
               <span>Servidor Zabbix</span>
-              {topologyZabbixServerId ? (
+              {topologyZabbixServerIds.length === 1 ? (
                 <input
                   readOnly
-                  value={zabbixServers.find((s) => s.id === topologyZabbixServerId)?.name ?? topologyZabbixServerId}
+                  value={zabbixServers.find((s) => s.id === topologyZabbixServerIds[0])?.name ?? topologyZabbixServerIds[0]}
                   className="server-locked-input"
                   title="Servidor fixado pelo mapa"
                 />
               ) : (
                 <select value={hostPickerServerId} onChange={(event) => void loadHostPickerHosts(event.target.value)}>
                   <option value="">Selecione o servidor</option>
-                  {zabbixServers.map((server) => (
+                  {(topologyZabbixServerIds.length > 0
+                    ? zabbixServers.filter((s) => topologyZabbixServerIds.includes(s.id ?? ""))
+                    : zabbixServers
+                  ).map((server) => (
                     <option key={server.id ?? server.name} value={server.id ?? ""}>
                       {server.name}
                     </option>
@@ -2716,17 +2729,20 @@ function TopologyEditor({
                 </div>
                 <label>
                   Servidor Zabbix
-                  {topologyZabbixServerId ? (
+                  {topologyZabbixServerIds.length === 1 ? (
                     <input
                       readOnly
-                      value={zabbixServers.find((s) => s.id === topologyZabbixServerId)?.name ?? topologyZabbixServerId}
+                      value={zabbixServers.find((s) => s.id === topologyZabbixServerIds[0])?.name ?? topologyZabbixServerIds[0]}
                       className="server-locked-input"
                       title="Servidor fixado pelo mapa"
                     />
                   ) : (
-                    <select value={deviceForm.zabbixServerId} onChange={(event) => setDeviceForm({ ...deviceForm, zabbixServerId: event.target.value, hostId: "", statusItemKey: "" })}>
+                    <select value={deviceForm.zabbixServerId} onChange={(event) => { setDeviceForm({ ...deviceForm, zabbixServerId: event.target.value, hostId: "", statusItemKey: "" }); setHostSearch(""); }}>
                       <option value="">Selecione um servidor</option>
-                      {zabbixServers.map((server) => (
+                      {(topologyZabbixServerIds.length > 0
+                        ? zabbixServers.filter((s) => topologyZabbixServerIds.includes(s.id ?? ""))
+                        : zabbixServers
+                      ).map((server) => (
                         <option key={server.id} value={server.id ?? ""}>{server.name}</option>
                       ))}
                     </select>
@@ -2737,6 +2753,15 @@ function TopologyEditor({
                     Host Zabbix
                     <small>{deviceForm.hostId ? `${Math.max(1, filteredHosts.findIndex((host) => host.hostId === deviceForm.hostId) + 1)}/${filteredHosts.length}` : `0/${filteredHosts.length}`}</small>
                   </span>
+                  <div className="host-search-box">
+                    <Search size={14} />
+                    <input
+                      type="text"
+                      placeholder="Pesquisar host..."
+                      value={hostSearch}
+                      onChange={(event) => setHostSearch(event.target.value)}
+                    />
+                  </div>
                   <select value={deviceForm.hostId} onChange={(event) => setDeviceForm({ ...deviceForm, hostId: event.target.value, statusItemKey: "" })}>
                     <option value="">Selecione um host</option>
                     {filteredHosts.map((host) => (

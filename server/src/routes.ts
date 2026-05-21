@@ -21,6 +21,7 @@ const topologySchema = z.object({
   name: z.string().min(1).max(120),
   topologyType: z.enum(["isp", "corporate"]).optional(),
   zabbixServerId: z.string().uuid().optional(),
+  zabbixServerIds: z.array(z.string().uuid()).optional(),
   nodes: z.array(z.object({
     id: z.string(),
     hostId: z.string().optional(),

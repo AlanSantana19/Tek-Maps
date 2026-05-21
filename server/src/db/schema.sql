@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS access_users (
 );
 
 ALTER TABLE topologies ADD COLUMN IF NOT EXISTS topology_type TEXT CHECK (topology_type IN ('isp', 'corporate'));
+ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_ids UUID[] NOT NULL DEFAULT '{}';
 
 ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
 ALTER TABLE access_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false;

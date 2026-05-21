@@ -50,6 +50,7 @@ export interface Topology {
   name: string;
   topologyType?: "isp" | "corporate";
   zabbixServerId?: string;
+  zabbixServerIds?: string[];
   nodes: Array<{
     id: string;
     hostId?: string;
