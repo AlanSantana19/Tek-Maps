@@ -267,6 +267,7 @@ const DEFAULT_LOGIN_LOGO_CONFIG: LoginLogoConfig = {
 export function App() {
   const [token, setLocalToken] = useState(getToken());
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
+  const contentShellRef = useRef<HTMLElement>(null);
   const [editorMode, setEditorMode] = useState<"maps" | "canvas">("maps");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -482,6 +483,10 @@ export function App() {
     void getNavLogoConfig().then(setNavLogoConfig).catch(() => {});
     void getFaviconConfig().then((cfg) => { setFaviconConfig(cfg); if (cfg.dataUrl) applyFavicon(cfg.dataUrl, cfg.size); else clearFavicon(); }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (contentShellRef.current) contentShellRef.current.scrollTop = 0;
+  }, [activeSection]);
 
   useEffect(() => {
     if (!token) {
@@ -1007,7 +1012,7 @@ export function App() {
         </button>
       </aside>
 
-      <section className="content-shell">
+      <section className="content-shell" ref={contentShellRef}>
         {activeSection === "dashboard" ? (
           <Dashboard
             hosts={hosts}
