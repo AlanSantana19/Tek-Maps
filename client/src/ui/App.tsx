@@ -724,6 +724,14 @@ export function App() {
     setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }
 
+  function removeSelectedNodes(nodeIds: string[]) {
+    if (nodeIds.length === 0) return;
+    pushHistory();
+    const idSet = new Set(nodeIds);
+    setNodes((current) => current.filter((n) => !idSet.has(n.id)));
+    setEdges((current) => current.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)));
+  }
+
   function pasteClipboardNodes(newNodes: DeviceFlowNode[], newEdges: Edge[]) {
     pushHistory();
     setNodes((current) => [...current, ...newNodes]);
@@ -1011,6 +1019,7 @@ export function App() {
             onPasteNodes={pasteClipboardNodes}
             onUndo={undo}
             canUndo={historyLength > 0}
+            onRemoveSelectedNodes={removeSelectedNodes}
           />
         ) : null}
 
@@ -1960,7 +1969,8 @@ function TopologyEditor({
   onConnect,
   onPasteNodes,
   onUndo,
-  canUndo
+  canUndo,
+  onRemoveSelectedNodes
 }: {
   topologyName: string;
   topologyZabbixServerIds: string[];
@@ -2008,6 +2018,7 @@ function TopologyEditor({
   onPasteNodes: (newNodes: DeviceFlowNode[], newEdges: Edge[]) => void;
   onUndo: () => void;
   canUndo: boolean;
+  onRemoveSelectedNodes: (nodeIds: string[]) => void;
 }) {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [clipboardCount, setClipboardCount] = useState(() => {
@@ -2062,20 +2073,27 @@ function TopologyEditor({
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (!e.ctrlKey && !e.metaKey) return;
       const el = document.activeElement;
-      if (
+      const inInput =
         el instanceof HTMLInputElement ||
         el instanceof HTMLTextAreaElement ||
-        (el instanceof HTMLElement && el.isContentEditable)
-      ) return;
+        (el instanceof HTMLElement && el.isContentEditable);
+
+      if ((e.key === "Delete" || e.key === "Backspace") && !inInput) {
+        const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
+        if (selectedIds.length > 0) { e.preventDefault(); onRemoveSelectedNodes(selectedIds); }
+        return;
+      }
+
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (inInput) return;
       if (e.key === "c" || e.key === "C") copySelectedNodes();
       if (e.key === "v" || e.key === "V") pasteSelectedNodes();
       if (e.key === "z" || e.key === "Z") { e.preventDefault(); onUndo(); }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [copySelectedNodes, pasteSelectedNodes, onUndo]);
+  }, [nodes, copySelectedNodes, pasteSelectedNodes, onUndo, onRemoveSelectedNodes]);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
@@ -2649,6 +2667,19 @@ function TopologyEditor({
               <RotateCcw size={17} />
             </button>
             <div className="toolbar-divider" />
+            <div className="tool-button-wrap">
+              <button
+                className="tool-button danger"
+                type="button"
+                onClick={() => onRemoveSelectedNodes(nodes.filter((n) => n.selected).map((n) => n.id))}
+                disabled={selectedCount === 0}
+                title={selectedCount > 0 ? `Excluir selecionados (${selectedCount} nó${selectedCount !== 1 ? "s" : ""}) — Delete` : "Selecione nós para excluir — Delete"}
+                aria-label="Excluir nós selecionados"
+              >
+                <Trash2 size={17} />
+              </button>
+              {selectedCount > 0 && <span className="tool-count-badge tool-count-badge--danger">{selectedCount}</span>}
+            </div>
             <div className="tool-button-wrap">
               <button
                 className="tool-button"

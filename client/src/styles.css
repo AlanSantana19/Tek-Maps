@@ -886,6 +886,10 @@ select {
   line-height: 1;
 }
 
+.tool-count-badge--danger {
+  background: #ef4444;
+}
+
 .create-tool-menu button {
   min-height: 38px;
   display: flex;
