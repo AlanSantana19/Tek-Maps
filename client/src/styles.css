@@ -422,8 +422,8 @@ select {
 .dashboard-panels--2col {
   display: flex;
   flex-direction: row;
-  align-items: stretch;
-  min-height: 500px;
+  align-items: start;
+  gap: 14px;
 }
 
 .dashboard-col {
@@ -476,18 +476,13 @@ select {
 }
 
 .panel--full-col {
-  display: flex;
-  flex-direction: column;
   flex: 1;
   min-width: 0;
-  min-height: 0;
-  box-sizing: border-box;
 }
 
 .panel--full-col .activity-list--scroll {
-  flex: 1;
-  min-height: 0;
   overflow-y: auto;
+  max-height: 300px;
   align-content: start;
   scrollbar-width: thin;
   scrollbar-color: #273244 #0b0d10;
