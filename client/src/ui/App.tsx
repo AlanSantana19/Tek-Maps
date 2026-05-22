@@ -208,7 +208,7 @@ type PaletteItem = {
   icon: typeof Router;
 };
 
-type EditorTool = "select" | "delete" | "cable" | PaletteItem["id"];
+type EditorTool = "select" | "cable" | PaletteItem["id"];
 
 const paletteItems: PaletteItem[] = [
   { id: "host", label: "Host", type: "unknown", icon: HardDrive },
@@ -2293,12 +2293,6 @@ function TopologyEditor({
     setSelectedNodeId(node.id);
     setSelectedEdgeId(null);
 
-    if (activeTool === "delete") {
-      onRemoveDeviceNode(node.id);
-      closeDeviceConfig();
-      return;
-    }
-
     if (activeTool === "cable") {
       closeDeviceConfig();
       setLinkDraft((current) => {
@@ -2597,7 +2591,7 @@ function TopologyEditor({
             </button>
             <div className="create-tool-wrap">
               <button
-                className={`create-tool-button ${activeTool !== "select" && activeTool !== "delete" ? "active" : ""}`}
+                className={`create-tool-button ${activeTool !== "select" ? "active" : ""}`}
                 type="button"
                 onClick={() => setCreateMenuOpen((current) => !current)}
                 title="Adicionar elemento"
@@ -2640,9 +2634,6 @@ function TopologyEditor({
                 </div>
               ) : null}
             </div>
-            <button className={`tool-button danger ${activeTool === "delete" ? "active" : ""}`} type="button" onClick={() => chooseTool("delete")} title="Excluir" aria-label="Excluir">
-              <Trash2 size={17} />
-            </button>
             <button className={`tool-button ${bulkEditOpen ? "active" : ""}`} type="button" onClick={() => setBulkEditOpen((v) => !v)} title="Editar todos os elementos" aria-label="Editar todos os elementos">
               <Layers size={17} />
             </button>
@@ -2719,7 +2710,7 @@ function TopologyEditor({
           snapshotsByHost={snapshotsByHost}
           onInit={setFlowInstance}
           onNodeClick={(_, node) => handleNodeClick(node)}
-          onEdgeClick={(_, edge) => activeTool === "delete" ? onRemoveLinkEdge(edge.id) : openLinkConfig(edge)}
+          onEdgeClick={(_, edge) => openLinkConfig(edge)}
           onPaneClick={handlePaneClick}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
