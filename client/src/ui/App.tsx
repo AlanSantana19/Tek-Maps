@@ -28,6 +28,7 @@ import {
   Pencil,
   Plus,
   Radio,
+  RotateCcw,
   Router,
   Save,
   Search,
@@ -41,7 +42,7 @@ import {
   X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Connection, Edge, Node, OnEdgesChange, OnNodesChange, ReactFlowInstance } from "@xyflow/react";
+import type { Connection, Edge, Node, NodePositionChange, OnEdgesChange, OnNodesChange, ReactFlowInstance } from "@xyflow/react";
 import type { DragEvent, FormEvent, MouseEvent } from "react";
 import { Background, BackgroundVariant, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
 import { LinkEdge, SnapshotsContext } from "./LinkEdge";
@@ -281,6 +282,46 @@ export function App() {
   });
   const [nodes, setNodes, onNodesChange] = useNodesState<DeviceFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Undo history
+  const historyRef = useRef<Array<{ nodes: DeviceFlowNode[]; edges: Edge[] }>>([]);
+  const [historyLength, setHistoryLength] = useState(0);
+  const nodesSnapRef = useRef(nodes);
+  nodesSnapRef.current = nodes;
+  const edgesSnapRef = useRef(edges);
+  edgesSnapRef.current = edges;
+
+  function pushHistory() {
+    historyRef.current = [...historyRef.current.slice(-49), { nodes: nodesSnapRef.current, edges: edgesSnapRef.current }];
+    setHistoryLength(historyRef.current.length);
+  }
+
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    const snapshot = historyRef.current[historyRef.current.length - 1];
+    historyRef.current = historyRef.current.slice(0, -1);
+    setHistoryLength(historyRef.current.length);
+    setNodes(snapshot.nodes);
+    setEdges(snapshot.edges);
+  }, [setNodes, setEdges]);
+
+  const isDraggingRef = useRef(false);
+  const wrappedOnNodesChange: OnNodesChange<DeviceFlowNode> = useCallback((changes) => {
+    const dragStart = changes.some(
+      (c): c is NodePositionChange => c.type === "position" && c.dragging === true
+    );
+    const dragEnd = changes.some(
+      (c): c is NodePositionChange => c.type === "position" && c.dragging === false
+    );
+    if (dragStart && !isDraggingRef.current) {
+      isDraggingRef.current = true;
+      historyRef.current = [...historyRef.current.slice(-49), { nodes: nodesSnapRef.current, edges: edgesSnapRef.current }];
+      setHistoryLength(historyRef.current.length);
+    }
+    if (dragEnd) isDraggingRef.current = false;
+    onNodesChange(changes);
+  }, [onNodesChange]);
+
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
@@ -520,6 +561,7 @@ export function App() {
     if (nodes.some((node) => node.id === id)) {
       return id;
     }
+    pushHistory();
     setNodes((current) => [
       ...current,
       {
@@ -547,6 +589,7 @@ export function App() {
 
   function addPaletteNode(item: PaletteItem, position: { x: number; y: number }) {
     const id = `node-${item.id}-${Date.now()}`;
+    pushHistory();
     setNodes((current) => [
       ...current,
       {
@@ -607,6 +650,7 @@ export function App() {
     customIconUrl?: string;
   }) {
     const host = value.hostId ? hosts.find((item) => item.hostId === value.hostId) : undefined;
+    pushHistory();
     setNodes((current) => current.map((node) => {
       if (node.id !== nodeId) {
         return node;
@@ -639,6 +683,7 @@ export function App() {
   }
 
   function bulkUpdateNodes(iconSize: number, labelFontSize: number) {
+    pushHistory();
     setNodes((current) => current.map((node) => ({
       ...node,
       data: { ...node.data, iconSize, labelFontSize }
@@ -646,6 +691,7 @@ export function App() {
   }
 
   function bulkUpdateEdges(badgeFontSize: number) {
+    pushHistory();
     setEdges((current) => current.map((edge) => ({
       ...edge,
       data: { ...edge.data, badgeFontSize }
@@ -657,6 +703,7 @@ export function App() {
     if (!source) {
       return null;
     }
+    pushHistory();
     const id = `${source.id}-copy-${Date.now()}`;
     setNodes((current) => [
       ...current,
@@ -672,16 +719,19 @@ export function App() {
   }
 
   function removeDeviceNode(nodeId: string) {
+    pushHistory();
     setNodes((current) => current.filter((node) => node.id !== nodeId));
     setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }
 
   function pasteClipboardNodes(newNodes: DeviceFlowNode[], newEdges: Edge[]) {
+    pushHistory();
     setNodes((current) => [...current, ...newNodes]);
     setEdges((current) => [...current, ...newEdges]);
   }
 
   function createLinkEdge(source: string, target: string, data: LinkEdgeData & { label?: string }) {
+    pushHistory();
     const sourceNode = nodes.find((node) => node.id === source);
     const targetNode = nodes.find((node) => node.id === target);
     const edge = buildLinkEdge({
@@ -700,6 +750,7 @@ export function App() {
   }
 
   function updateLinkEdge(edgeId: string, value: LinkEdgeData & { label?: string }) {
+    pushHistory();
     setEdges((current) => current.map((edge) => {
       if (edge.id !== edgeId) {
         return edge;
@@ -713,6 +764,7 @@ export function App() {
   }
 
   function moveLinkEdge(edgeId: string, sourceId: string, targetId: string) {
+    pushHistory();
     const sourceNode = nodes.find((n) => n.id === sourceId);
     const targetNode = nodes.find((n) => n.id === targetId);
     setEdges((current) => current.map((edge) => {
@@ -738,6 +790,7 @@ export function App() {
   }
 
   function removeLinkEdge(edgeId: string) {
+    pushHistory();
     setEdges((current) => current.filter((edge) => edge.id !== edgeId));
   }
 
@@ -944,7 +997,7 @@ export function App() {
             onMoveLinkEdge={moveLinkEdge}
             onRemoveLinkEdge={removeLinkEdge}
             onSave={persistTopology}
-            onNodesChange={onNodesChange}
+            onNodesChange={wrappedOnNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => {
               if (connection.source && connection.target) {
@@ -956,6 +1009,8 @@ export function App() {
               }
             }}
             onPasteNodes={pasteClipboardNodes}
+            onUndo={undo}
+            canUndo={historyLength > 0}
           />
         ) : null}
 
@@ -1903,7 +1958,9 @@ function TopologyEditor({
   onNodesChange,
   onEdgesChange,
   onConnect,
-  onPasteNodes
+  onPasteNodes,
+  onUndo,
+  canUndo
 }: {
   topologyName: string;
   topologyZabbixServerIds: string[];
@@ -1949,6 +2006,8 @@ function TopologyEditor({
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
   onPasteNodes: (newNodes: DeviceFlowNode[], newEdges: Edge[]) => void;
+  onUndo: () => void;
+  canUndo: boolean;
 }) {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [clipboardCount, setClipboardCount] = useState(() => {
@@ -2010,10 +2069,11 @@ function TopologyEditor({
       ) return;
       if (e.key === "c" || e.key === "C") copySelectedNodes();
       if (e.key === "v" || e.key === "V") pasteSelectedNodes();
+      if (e.key === "z" || e.key === "Z") { e.preventDefault(); onUndo(); }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [copySelectedNodes, pasteSelectedNodes]);
+  }, [copySelectedNodes, pasteSelectedNodes, onUndo]);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
@@ -2575,6 +2635,16 @@ function TopologyEditor({
               aria-label="Alternar snap to grid"
             >
               <Magnet size={17} />
+            </button>
+            <button
+              className="tool-button"
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title={canUndo ? "Desfazer — Ctrl+Z" : "Nada para desfazer"}
+              aria-label="Desfazer última ação"
+            >
+              <RotateCcw size={17} />
             </button>
             <div className="toolbar-divider" />
             <div className="tool-button-wrap">
