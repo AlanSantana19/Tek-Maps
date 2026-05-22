@@ -862,6 +862,30 @@ select {
   flex-shrink: 0;
 }
 
+.tool-button-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.tool-count-badge {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  line-height: 1;
+}
+
 .create-tool-menu button {
   min-height: 38px;
   display: flex;

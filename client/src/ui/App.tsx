@@ -7,6 +7,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clipboard,
   Copy,
   Download,
   Eye,
@@ -102,6 +103,7 @@ import { DeviceNode } from "./DeviceNode";
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { link: LinkEdge };
 const EMPTY_SNAPSHOTS = new Map<string, DeviceSnapshot>();
+const CLIPBOARD_KEY = "tek-map-clipboard";
 
 type SectionId = "dashboard" | "editor" | "viewer" | "server" | "admin" | "icons" | "branding";
 
@@ -674,6 +676,11 @@ export function App() {
     setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }
 
+  function pasteClipboardNodes(newNodes: DeviceFlowNode[], newEdges: Edge[]) {
+    setNodes((current) => [...current, ...newNodes]);
+    setEdges((current) => [...current, ...newEdges]);
+  }
+
   function createLinkEdge(source: string, target: string, data: LinkEdgeData & { label?: string }) {
     const sourceNode = nodes.find((node) => node.id === source);
     const targetNode = nodes.find((node) => node.id === target);
@@ -948,6 +955,7 @@ export function App() {
                 });
               }
             }}
+            onPasteNodes={pasteClipboardNodes}
           />
         ) : null}
 
@@ -1894,7 +1902,8 @@ function TopologyEditor({
   onSave,
   onNodesChange,
   onEdgesChange,
-  onConnect
+  onConnect,
+  onPasteNodes
 }: {
   topologyName: string;
   topologyZabbixServerIds: string[];
@@ -1939,8 +1948,73 @@ function TopologyEditor({
   onNodesChange: OnNodesChange<DeviceFlowNode>;
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
+  onPasteNodes: (newNodes: DeviceFlowNode[], newEdges: Edge[]) => void;
 }) {
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [clipboardCount, setClipboardCount] = useState(() => {
+    try {
+      const raw = localStorage.getItem(CLIPBOARD_KEY);
+      if (!raw) return 0;
+      const data = JSON.parse(raw) as { nodes?: unknown[] };
+      return data.nodes?.length ?? 0;
+    } catch { return 0; }
+  });
+  const selectedCount = nodes.filter((n) => n.selected).length;
+
+  const copySelectedNodes = useCallback(() => {
+    const selected = nodes.filter((n) => n.selected);
+    if (selected.length === 0) return;
+    const selectedIds = new Set(selected.map((n) => n.id));
+    const clipNodes = selected.map(fromFlowNode);
+    const clipEdges = edges
+      .filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
+      .map(fromFlowEdge);
+    localStorage.setItem(CLIPBOARD_KEY, JSON.stringify({ nodes: clipNodes, edges: clipEdges }));
+    setClipboardCount(clipNodes.length);
+  }, [nodes, edges]);
+
+  const pasteSelectedNodes = useCallback(() => {
+    const raw = localStorage.getItem(CLIPBOARD_KEY);
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw) as { nodes: Topology["nodes"]; edges: Topology["edges"] };
+      if (!data.nodes?.length) return;
+      const idMap = new Map<string, string>();
+      const remappedNodes = data.nodes.map((n) => {
+        const newId = `node-paste-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        idMap.set(n.id, newId);
+        return { ...n, id: newId, position: { x: n.position.x + 40, y: n.position.y + 40 } };
+      });
+      const remappedEdges = (data.edges ?? [])
+        .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+        .map((e) => ({
+          ...e,
+          id: `edge-paste-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          source: idMap.get(e.source)!,
+          target: idMap.get(e.target)!
+        }));
+      const flowNodes = remappedNodes.map(toFlowNode(hosts, customIcons));
+      const flowEdges = remappedEdges.map(toFlowEdge);
+      onPasteNodes(flowNodes, flowEdges);
+    } catch { /* ignore malformed clipboard */ }
+  }, [hosts, customIcons, onPasteNodes]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const el = document.activeElement;
+      if (
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        (el instanceof HTMLElement && el.isContentEditable)
+      ) return;
+      if (e.key === "c" || e.key === "C") copySelectedNodes();
+      if (e.key === "v" || e.key === "V") pasteSelectedNodes();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [copySelectedNodes, pasteSelectedNodes]);
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<"basic" | "zabbix">("basic");
@@ -2502,6 +2576,33 @@ function TopologyEditor({
             >
               <Magnet size={17} />
             </button>
+            <div className="toolbar-divider" />
+            <div className="tool-button-wrap">
+              <button
+                className="tool-button"
+                type="button"
+                onClick={copySelectedNodes}
+                disabled={selectedCount === 0}
+                title={selectedCount > 0 ? `Copiar seleção (${selectedCount} nó${selectedCount !== 1 ? "s" : ""}) — Ctrl+C` : "Selecione nós para copiar — Ctrl+C"}
+                aria-label="Copiar nós selecionados"
+              >
+                <Copy size={17} />
+              </button>
+              {selectedCount > 0 && <span className="tool-count-badge">{selectedCount}</span>}
+            </div>
+            <div className="tool-button-wrap">
+              <button
+                className="tool-button"
+                type="button"
+                onClick={pasteSelectedNodes}
+                disabled={clipboardCount === 0}
+                title={clipboardCount > 0 ? `Colar (${clipboardCount} nó${clipboardCount !== 1 ? "s" : ""} no clipboard) — Ctrl+V` : "Clipboard vazio — Ctrl+V"}
+                aria-label="Colar nós do clipboard"
+              >
+                <Clipboard size={17} />
+              </button>
+              {clipboardCount > 0 && <span className="tool-count-badge">{clipboardCount}</span>}
+            </div>
           </div>
           <div className="editor-side-actions">
             <button className="tool-button save-tool-button" onClick={onSave} disabled={saving} title="Salvar" aria-label="Salvar">
