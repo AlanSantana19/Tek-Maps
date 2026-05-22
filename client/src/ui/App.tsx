@@ -2055,6 +2055,8 @@ function TopologyEditor({
       const flowNodes = remappedNodes.map(toFlowNode(hosts, customIcons));
       const flowEdges = remappedEdges.map(toFlowEdge);
       onPasteNodes(flowNodes, flowEdges);
+      localStorage.removeItem(CLIPBOARD_KEY);
+      setClipboardCount(0);
     } catch { /* ignore malformed clipboard */ }
   }, [hosts, customIcons, onPasteNodes]);
 
