@@ -351,6 +351,53 @@ export function App() {
     [hosts, hostsInMaps]
   );
 
+  const hostToMaps = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const topology of topologies) {
+      for (const node of topology.nodes) {
+        if (!node.hostId) continue;
+        const existing = map.get(node.hostId) ?? [];
+        if (!existing.includes(topology.name)) map.set(node.hostId, [...existing, topology.name]);
+      }
+    }
+    return map;
+  }, [topologies]);
+
+  const [hostEvents, setHostEvents] = useState<RecentEvent[]>([]);
+  const prevHostStatusRef = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    const prev = prevHostStatusRef.current;
+    const newEvents: RecentEvent[] = [];
+    for (const host of hosts) {
+      const prevStatus = prev.get(host.hostId);
+      const maps = hostToMaps.get(host.hostId) ?? [];
+      if (maps.length === 0) continue;
+      const time = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const detail = [...maps, time].join(" · ");
+      if (prevStatus === undefined) {
+        if (host.status === "down") {
+          newEvents.push({ id: `${host.hostId}-down-init-${Date.now()}`, type: "host_down", label: host.visibleName, detail, timestamp: new Date() });
+        }
+      } else if (prevStatus !== host.status) {
+        newEvents.push({
+          id: `${host.hostId}-${host.status}-${Date.now()}`,
+          type: host.status === "down" ? "host_down" : "host_up",
+          label: host.visibleName,
+          detail,
+          timestamp: new Date()
+        });
+      }
+      prev.set(host.hostId, host.status);
+    }
+    if (newEvents.length > 0) {
+      for (const ev of newEvents) {
+        void saveRecentEvent({ id: ev.id, type: ev.type, label: ev.label, detail: ev.detail }).catch(() => {});
+      }
+      setHostEvents((current) => [...newEvents, ...current]);
+    }
+  }, [hosts, hostToMaps]);
+
   type BandwidthAlert = {
     edgeId: string;
     topologyName: string;
@@ -971,6 +1018,7 @@ export function App() {
             bandwidthAlerts={bandwidthAlerts}
             topologies={topologies}
             wsConnected={wsConnected}
+            hostEvents={hostEvents}
           />
         ) : null}
 
@@ -1434,6 +1482,7 @@ function Dashboard({
   bandwidthAlerts,
   topologies,
   wsConnected,
+  hostEvents,
 }: {
   hosts: DeviceSnapshot[];
   alertsCount: number;
@@ -1443,6 +1492,7 @@ function Dashboard({
   bandwidthAlerts: BandwidthAlertItem[];
   topologies: Array<Topology & { id: string }>;
   wsConnected: boolean;
+  hostEvents: RecentEvent[];
 }) {
   const syncTimes = hosts.map((host) => host.syncedAt).sort();
   const latestSync = syncTimes[syncTimes.length - 1];
@@ -1458,70 +1508,22 @@ function Dashboard({
   const totalPages = Math.max(1, Math.ceil(todayLogs.length / LOGS_PER_PAGE));
   const pagedLogs = todayLogs.slice((activityPage - 1) * LOGS_PER_PAGE, activityPage * LOGS_PER_PAGE);
 
-  const hostToMaps = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const topology of topologies) {
-      for (const node of topology.nodes) {
-        if (!node.hostId) continue;
-        const existing = map.get(node.hostId) ?? [];
-        if (!existing.includes(topology.name)) {
-          map.set(node.hostId, [...existing, topology.name]);
-        }
-      }
-    }
-    return map;
-  }, [topologies]);
-
-  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
+  const [dbEvents, setDbEvents] = useState<RecentEvent[]>([]);
   const [eventsPage, setEventsPage] = useState(1);
-  const prevHostStatusRef = useRef(new Map<string, string>());
   const prevBwAlertEdgesRef = useRef(new Set<string>());
+
+  const recentEvents = useMemo(() => {
+    const hostEventIds = new Set(hostEvents.map((e) => e.id));
+    const merged = [...hostEvents, ...dbEvents.filter((e) => !hostEventIds.has(e.id))];
+    merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return merged;
+  }, [hostEvents, dbEvents]);
 
   const EVENTS_PER_PAGE = 10;
   const totalEventPages = Math.max(1, Math.ceil(recentEvents.length / EVENTS_PER_PAGE));
   const pagedEvents = recentEvents.slice((eventsPage - 1) * EVENTS_PER_PAGE, eventsPage * EVENTS_PER_PAGE);
 
-  useEffect(() => {
-    const prev = prevHostStatusRef.current;
-    const events: RecentEvent[] = [];
-    for (const host of hosts) {
-      const prevStatus = prev.get(host.hostId);
-      const maps = hostToMaps.get(host.hostId) ?? [];
-      // ignora hosts que nao estao em nenhum mapa criado
-      // nao grava no prev para reprocessar quando as topologias carregarem
-      if (maps.length === 0) continue;
-      const time = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-      const detail = [...maps, time].join(" · ");
-      if (prevStatus === undefined) {
-        // carga inicial: registra hosts já offline no momento
-        if (host.status === "down") {
-          events.push({
-            id: `${host.hostId}-down-init-${Date.now()}`,
-            type: "host_down",
-            label: host.visibleName,
-            detail,
-            timestamp: new Date()
-          });
-        }
-      } else if (prevStatus !== host.status) {
-        events.push({
-          id: `${host.hostId}-${host.status}-${Date.now()}`,
-          type: host.status === "down" ? "host_down" : "host_up",
-          label: host.visibleName,
-          detail,
-          timestamp: new Date()
-        });
-      }
-      prev.set(host.hostId, host.status);
-    }
-    if (events.length > 0) {
-      for (const ev of events) {
-        void saveRecentEvent({ id: ev.id, type: ev.type, label: ev.label, detail: ev.detail }).catch(() => {});
-      }
-      setRecentEvents((current) => [...events, ...current]);
-      setEventsPage(1);
-    }
-  }, [hosts, hostToMaps]);
+  useEffect(() => { setEventsPage(1); }, [hostEvents]);
 
   useEffect(() => {
     const prev = prevBwAlertEdgesRef.current;
@@ -1549,7 +1551,7 @@ function Dashboard({
       for (const ev of events) {
         void saveRecentEvent({ id: ev.id, type: ev.type, label: ev.label, detail: ev.detail }).catch(() => {});
       }
-      setRecentEvents((current) => [...events, ...current]);
+      setDbEvents((current) => [...events, ...current]);
       setEventsPage(1);
     }
   }, [bandwidthAlerts]);
@@ -1558,7 +1560,7 @@ function Dashboard({
     function fetchDashboardData() {
       void getActivityLog().then(setActivityLog).catch(() => {});
       void getRecentEvents().then((rows) => {
-        setRecentEvents(rows.map((r) => ({ ...r, type: r.type as RecentEvent["type"], timestamp: new Date(r.createdAt) })));
+        setDbEvents(rows.map((r) => ({ ...r, type: r.type as RecentEvent["type"], timestamp: new Date(r.createdAt) })));
       }).catch(() => {});
     }
     fetchDashboardData();
