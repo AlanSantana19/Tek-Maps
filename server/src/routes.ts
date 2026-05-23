@@ -67,13 +67,14 @@ const topologySchema = z.object({
     targetInterfaceAlias: z.string().max(180).optional(),
     sourceInterface: z.string().max(120).optional(),
     targetInterface: z.string().max(120).optional(),
-    cableType: z.enum(["fiber", "utp", "radio", "wireless", "vpn", "other"]).optional(),
+    cableType: z.enum(["fiber", "utp", "radio", "wireless", "vpn", "other", "signal"]).optional(),
     color: z.string().max(20).optional(),
     strokeWidth: z.number().min(1).max(12).optional(),
     lineStyle: z.enum(["solid", "dashed", "dotted", "dashdot"]).optional(),
     badgeFontSize: z.number().min(8).max(24).optional(),
     showTraffic: z.boolean().optional(),
     showLabel: z.boolean().optional(),
+    routing: z.enum(["straight", "malleable", "wave"]).optional(),
     waypointDX: z.number().optional(),
     waypointDY: z.number().optional(),
     showSignal: z.boolean().optional(),
@@ -81,6 +82,10 @@ const topologySchema = z.object({
     signalTxMetricKey: z.string().max(240).optional(),
     signalRxMetricKey: z.string().max(240).optional(),
     signalHostId: z.string().optional(),
+    showRadioSignal: z.boolean().optional(),
+    radioSignalLabel: z.string().max(120).optional(),
+    radioSignalHostId: z.string().optional(),
+    radioSignalMetricKey: z.string().max(240).optional(),
     bandwidthLimit: z.number().min(0).optional()
   }))
 });

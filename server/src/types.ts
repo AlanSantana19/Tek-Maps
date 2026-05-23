@@ -88,13 +88,14 @@ export interface TopologyEdge {
   targetInterfaceAlias?: string;
   sourceInterface?: string;
   targetInterface?: string;
-  cableType?: "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
+  cableType?: "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other" | "signal";
   color?: string;
   strokeWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
+  routing?: "straight" | "malleable" | "wave";
   waypointDX?: number;
   waypointDY?: number;
   showSignal?: boolean;
@@ -102,6 +103,10 @@ export interface TopologyEdge {
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
   signalHostId?: string;
+  showRadioSignal?: boolean;
+  radioSignalLabel?: string;
+  radioSignalHostId?: string;
+  radioSignalMetricKey?: string;
   bandwidthLimit?: number;
 }
 

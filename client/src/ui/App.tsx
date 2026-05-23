@@ -132,16 +132,17 @@ type DeviceNodeData = {
 
 type DeviceFlowNode = Node<DeviceNodeData, "device">;
 
-type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
+type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other" | "signal";
 type LineStyle = "solid" | "dashed" | "dotted" | "dashdot";
 
-const CABLE_TYPE_PRESETS: Record<CableType, { label: string; color: string; lineStyle: LineStyle; strokeWidth: number }> = {
-  fiber:    { label: "Fibra",    color: "#3b82f6", lineStyle: "solid",   strokeWidth: 2 },
-  utp:      { label: "UTP",     color: "#f59e0b", lineStyle: "solid",   strokeWidth: 2 },
-  radio:    { label: "Rádio",   color: "#a855f7", lineStyle: "dashed",  strokeWidth: 2 },
-  wireless: { label: "Wireless", color: "#10b981", lineStyle: "dotted",  strokeWidth: 2 },
-  vpn:      { label: "VPN",     color: "#22c55e", lineStyle: "dashdot", strokeWidth: 2 },
-  other:    { label: "Outro",   color: "#9ca3af", lineStyle: "solid",   strokeWidth: 2 },
+const CABLE_TYPE_PRESETS: Record<CableType, { label: string; color: string; lineStyle: LineStyle; strokeWidth: number; routing?: "straight" | "malleable" | "wave" }> = {
+  fiber:    { label: "Fibra",           color: "#3b82f6", lineStyle: "solid",   strokeWidth: 2 },
+  utp:      { label: "UTP",            color: "#f59e0b", lineStyle: "solid",   strokeWidth: 2 },
+  radio:    { label: "Rádio",          color: "#a855f7", lineStyle: "dashed",  strokeWidth: 2 },
+  wireless: { label: "Wireless",       color: "#10b981", lineStyle: "dotted",  strokeWidth: 2 },
+  vpn:      { label: "VPN",           color: "#22c55e", lineStyle: "dashdot", strokeWidth: 2 },
+  other:    { label: "Outro",          color: "#9ca3af", lineStyle: "solid",   strokeWidth: 2 },
+  signal:   { label: "Sinal de Rádio", color: "#a855f7", lineStyle: "solid",   strokeWidth: 2, routing: "wave" },
 };
 
 function lineStyleDash(lineStyle: LineStyle | undefined): string | undefined {
@@ -188,7 +189,7 @@ type LinkEdgeData = {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
-  routing?: "straight" | "malleable";
+  routing?: "straight" | "malleable" | "wave";
   waypoints?: Array<{ x: number; y: number }>;
   waypointDX?: number;
   waypointDY?: number;
@@ -197,6 +198,10 @@ type LinkEdgeData = {
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
   signalHostId?: string;
+  showRadioSignal?: boolean;
+  radioSignalLabel?: string;
+  radioSignalHostId?: string;
+  radioSignalMetricKey?: string;
   linkRole?: "primary" | "backup";
   showLinkRole?: boolean;
   bandwidthLimit?: number;
@@ -2181,7 +2186,7 @@ function TopologyEditor({
     color: "#9ca3af",
     strokeWidth: 2,
     lineStyle: "solid" as LineStyle,
-    routing: "straight" as "straight" | "malleable",
+    routing: "straight" as "straight" | "malleable" | "wave",
     badgeFontSize: 10,
     showTraffic: true,
     showLabel: true,
@@ -2190,6 +2195,10 @@ function TopologyEditor({
     signalTxMetricKey: "",
     signalRxMetricKey: "",
     signalHostId: "",
+    showRadioSignal: false,
+    radioSignalLabel: "",
+    radioSignalHostId: "",
+    radioSignalMetricKey: "",
     linkRole: "" as "primary" | "backup" | "",
     showLinkRole: true,
     bandwidthLimit: "" as number | "",
@@ -2214,6 +2223,8 @@ function TopologyEditor({
   const signalAllMetrics = signalEffectiveHostId ? (getSnapshot(snapshotsByHost, String(signalEffectiveHostId), draftSourceNode?.data.zabbixServerId)?.metrics ?? []) : [];
   const signalOpticalMetrics = signalAllMetrics.filter((m) => m.unit === "dBm" || /optical|sfp|pon|rx\.power|tx\.power|optic|rssi|snr|signal/i.test(m.key) || /optical|sfp|pon|rx power|tx power|rssi|snr/i.test(m.label));
   const signalOtherMetrics = signalAllMetrics.filter((m) => !signalOpticalMetrics.includes(m));
+  const radioSignalHost = hosts.find((h) => `${h.zabbixServerId}:${h.hostId}` === linkForm.radioSignalHostId);
+  const radioSignalAllMetrics = radioSignalHost ? (getSnapshot(snapshotsByHost, radioSignalHost.hostId, radioSignalHost.zabbixServerId)?.metrics ?? []) : [];
   const filteredHostPickerHosts = hostPickerHosts.filter((host) => {
     const search = hostPickerSearch.trim().toLowerCase();
     if (!search) {
@@ -2381,6 +2392,10 @@ function TopologyEditor({
       signalTxMetricKey: data?.signalTxMetricKey ?? "",
       signalRxMetricKey: data?.signalRxMetricKey ?? "",
       signalHostId: data?.signalHostId ?? data?.sourceHostId ?? "",
+      showRadioSignal: data?.showRadioSignal ?? false,
+      radioSignalLabel: data?.radioSignalLabel ?? "",
+      radioSignalHostId: data?.radioSignalHostId ?? data?.sourceHostId ?? "",
+      radioSignalMetricKey: data?.radioSignalMetricKey ?? "",
       linkRole: (data?.linkRole ?? "") as "primary" | "backup" | "",
       showLinkRole: data?.showLinkRole ?? true,
       bandwidthLimitUnit: (data?.bandwidthLimit && data.bandwidthLimit >= 1000 && data.bandwidthLimit % 1 === 0) ? "gbps" : "mbps",
@@ -2425,6 +2440,10 @@ function TopologyEditor({
       signalTxMetricKey: linkForm.signalTxMetricKey || undefined,
       signalRxMetricKey: linkForm.signalRxMetricKey || undefined,
       signalHostId: linkForm.signalHostId || draftSourceNode?.data.hostId,
+      showRadioSignal: linkForm.showRadioSignal,
+      radioSignalLabel: linkForm.radioSignalLabel.trim() || undefined,
+      radioSignalHostId: linkForm.radioSignalHostId || draftSourceNode?.data.hostId,
+      radioSignalMetricKey: linkForm.radioSignalMetricKey || undefined,
       linkRole: linkForm.linkRole || undefined,
       showLinkRole: linkForm.showLinkRole,
       bandwidthLimit: linkForm.bandwidthLimit !== ""
@@ -2674,6 +2693,14 @@ function TopologyEditor({
                     role="menuitem"
                   >
                     <span>Cabo Dobrável</span>
+                  </button>
+                  <button
+                    className={`create-tool-cable-btn${activeTool === "cable" && linkForm.routing === "wave" ? " active" : ""}`}
+                    type="button"
+                    onClick={() => { setLinkForm({ ...defaultLinkForm(), routing: "wave", cableType: "signal", color: "#a855f7", lineStyle: "solid" }); chooseCreateTool("cable"); }}
+                    role="menuitem"
+                  >
+                    <span>Sinal de Rádio</span>
                   </button>
                 </div>
               ) : null}
@@ -3332,12 +3359,18 @@ function TopologyEditor({
                     key={id}
                     type="button"
                     className={`cable-type-btn${linkForm.cableType === id ? " active" : ""}`}
-                    onClick={() => setLinkForm({ ...linkForm, cableType: id, color: preset.color, lineStyle: preset.lineStyle, strokeWidth: preset.strokeWidth })}
+                    onClick={() => setLinkForm({ ...linkForm, cableType: id, color: preset.color, lineStyle: preset.lineStyle, strokeWidth: preset.strokeWidth, ...(preset.routing ? { routing: preset.routing } : {}) })}
                   >
-                    <span
-                      className="cable-type-line"
-                      style={{ background: cablePreviewBackground(preset.lineStyle, preset.color) }}
-                    />
+                    {preset.routing === "wave" ? (
+                      <svg className="cable-type-wave-preview" viewBox="0 0 48 8" width="48" height="8" fill="none">
+                        <path d={`M 0 4 C 4 0 8 8 12 4 C 16 0 20 8 24 4 C 28 0 32 8 36 4 C 40 0 44 8 48 4`} stroke={preset.color} strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    ) : (
+                      <span
+                        className="cable-type-line"
+                        style={{ background: cablePreviewBackground(preset.lineStyle, preset.color) }}
+                      />
+                    )}
                     {preset.label}
                   </button>
                 ))}
@@ -3383,6 +3416,13 @@ function TopologyEditor({
                     onClick={() => setLinkForm({ ...linkForm, routing: "malleable" })}
                   >
                     Maleável
+                  </button>
+                  <button
+                    type="button"
+                    className={`cable-routing-btn${linkForm.routing === "wave" ? " active" : ""}`}
+                    onClick={() => setLinkForm({ ...linkForm, routing: "wave" })}
+                  >
+                    Onda
                   </button>
                 </div>
               </label>
@@ -3547,6 +3587,46 @@ function TopologyEditor({
                           ))}
                         </optgroup>
                       )}
+                    </select>
+                  </label>
+                </>
+              )}
+            </div>
+
+            <div className="element-section">
+              <div className="element-section-title"><Activity size={14} />Fusão Sinal de Rádio</div>
+              <label className="element-checkbox">
+                <input type="checkbox" checked={linkForm.showRadioSignal} onChange={(e) => setLinkForm({ ...linkForm, showRadioSignal: e.target.checked })} />
+                <span>Exibir sinal de rádio no tooltip</span>
+              </label>
+              {linkForm.showRadioSignal && (
+                <>
+                  <div className="two-col-fields">
+                    <label>
+                      Rádio
+                      <select value={linkForm.radioSignalHostId} onChange={(e) => setLinkForm({ ...linkForm, radioSignalHostId: e.target.value, radioSignalMetricKey: "" })}>
+                        <option value="">— selecione —</option>
+                        {hosts.map((h) => (
+                          <option key={`${h.zabbixServerId}:${h.hostId}`} value={`${h.zabbixServerId}:${h.hostId}`}>{h.visibleName || h.hostName}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Rótulo
+                      <input
+                        value={linkForm.radioSignalLabel}
+                        onChange={(e) => setLinkForm({ ...linkForm, radioSignalLabel: e.target.value })}
+                        placeholder="ex: RSSI, SNR..."
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Sinal de Rádio
+                    <select value={linkForm.radioSignalMetricKey} onChange={(e) => setLinkForm({ ...linkForm, radioSignalMetricKey: e.target.value })}>
+                      <option value="">— nenhuma —</option>
+                      {radioSignalAllMetrics.map((m) => (
+                        <option key={m.key} value={m.key}>{m.label || m.key}</option>
+                      ))}
                     </select>
                   </label>
                 </>
@@ -5331,6 +5411,10 @@ function toFlowEdge(edge: Topology["edges"][number]): Edge {
       signalTxMetricKey: edge.signalTxMetricKey,
       signalRxMetricKey: edge.signalRxMetricKey,
       signalHostId: edge.signalHostId,
+      showRadioSignal: edge.showRadioSignal,
+      radioSignalLabel: edge.radioSignalLabel,
+      radioSignalHostId: edge.radioSignalHostId,
+      radioSignalMetricKey: edge.radioSignalMetricKey,
       bandwidthLimit: edge.bandwidthLimit,
     }
   });
@@ -5377,6 +5461,10 @@ function fromFlowEdge(edge: Edge): Topology["edges"][number] {
     signalTxMetricKey: data?.signalTxMetricKey,
     signalRxMetricKey: data?.signalRxMetricKey,
     signalHostId: data?.signalHostId,
+    showRadioSignal: data?.showRadioSignal,
+    radioSignalLabel: data?.radioSignalLabel,
+    radioSignalHostId: data?.radioSignalHostId,
+    radioSignalMetricKey: data?.radioSignalMetricKey,
     bandwidthLimit: data?.bandwidthLimit,
   };
 }
@@ -5416,7 +5504,7 @@ function defaultLinkForm() {
     color: "#9ca3af",
     strokeWidth: 2,
     lineStyle: "solid" as LineStyle,
-    routing: "straight" as "straight" | "malleable",
+    routing: "straight" as "straight" | "malleable" | "wave",
     badgeFontSize: 10,
     showTraffic: true,
     showLabel: true,
@@ -5425,6 +5513,10 @@ function defaultLinkForm() {
     signalTxMetricKey: "",
     signalRxMetricKey: "",
     signalHostId: "",
+    showRadioSignal: false,
+    radioSignalLabel: "",
+    radioSignalHostId: "",
+    radioSignalMetricKey: "",
     linkRole: "" as "primary" | "backup" | "",
     showLinkRole: true,
     bandwidthLimit: "" as number | "",

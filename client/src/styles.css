@@ -1636,6 +1636,12 @@ select {
   border-radius: 2px;
 }
 
+.cable-type-wave-preview {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
 .cable-type-clear {
   padding: 4px 8px;
   border-radius: 6px;

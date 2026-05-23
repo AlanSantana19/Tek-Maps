@@ -8,13 +8,16 @@ import { ZabbixClient } from "./ZabbixClient.js";
 
 export class ZabbixSyncService extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
+  private quickTimer: NodeJS.Timeout | null = null;
   private running = false;
+  private quickRunning = false;
 
   constructor(
     private readonly settings: SettingsRepository,
     private readonly cache: ZabbixCacheRepository,
     private readonly intervalMs: number,
     private readonly timeoutMs: number,
+    private readonly quickIntervalMs: number = 5000,
     private readonly fallbackServer?: StoredZabbixConfig
   ) {
     super();
@@ -23,12 +26,103 @@ export class ZabbixSyncService extends EventEmitter {
   start() {
     void this.sync();
     this.timer = setInterval(() => void this.sync(), this.intervalMs);
+    this.quickTimer = setInterval(() => void this.quickSync(), this.quickIntervalMs);
   }
 
   stop() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.quickTimer) {
+      clearInterval(this.quickTimer);
+      this.quickTimer = null;
+    }
+  }
+
+  async quickSync(): Promise<void> {
+    if (this.quickRunning) {
+      return;
+    }
+    this.quickRunning = true;
+    try {
+      const configuredServers = await this.settings.listZabbixServers();
+      const servers = configuredServers.filter((server) => server.active !== false && server.password);
+      const targets = servers.length > 0 ? servers : this.fallbackServer?.password ? [this.fallbackServer] : [];
+      await Promise.all(targets.map((server) => this.quickSyncServer(server)));
+      this.emit("snapshots");
+    } catch (error) {
+      logger.warn({ error: error instanceof Error ? { message: error.message } : error }, "zabbix quick sync failed");
+    } finally {
+      this.quickRunning = false;
+    }
+  }
+
+  private async quickSyncServer(server: StoredZabbixConfig): Promise<void> {
+    if (!server.id || !server.password) {
+      return;
+    }
+    try {
+      const previousSnapshots = await this.cache.list(server.id);
+      const previousByHost = new Map(previousSnapshots.map((s) => [s.hostId, s]));
+
+      const client = new ZabbixClient({
+        url: server.url,
+        user: server.user,
+        password: server.password,
+        timeoutMs: this.timeoutMs
+      });
+
+      const hosts = await client.call<any[]>("host.get", {
+        output: ["hostid", "host", "name", "status", "maintenance_status"],
+        selectInterfaces: ["ip", "dns", "type", "main"],
+        monitored_hosts: true
+      });
+
+      const hostIds = hosts.map((h) => h.hostid);
+      if (hostIds.length === 0) {
+        return;
+      }
+
+      const [icmpItems, availabilityItems, problems] = await Promise.all([
+        client.call<any[]>("item.get", {
+          output: ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"],
+          hostids: hostIds,
+          monitored: true,
+          search: { key_: "icmpping" },
+          limit: Math.max(200, hostIds.length * 4)
+        }),
+        client.call<any[]>("item.get", {
+          output: ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"],
+          hostids: hostIds,
+          monitored: true,
+          search: { key_: "available" },
+          limit: Math.max(200, hostIds.length * 8)
+        }),
+        client.call<any[]>("problem.get", {
+          output: ["eventid", "objectid", "name", "severity", "clock"],
+          hostids: hostIds,
+          recent: false,
+          sortfield: ["eventid"],
+          sortorder: "DESC"
+        })
+      ]);
+
+      const statusItems = mergeItemsById(icmpItems, availabilityItems);
+      const snapshots = mapZabbixSnapshots(hosts, statusItems, problems).map((s) => ({
+        ...s,
+        metrics: previousByHost.get(s.hostId)?.metrics ?? s.metrics,
+        ports: previousByHost.get(s.hostId)?.ports ?? s.ports,
+        zabbixServerId: server.id
+      }));
+
+      await this.cache.replaceAll(snapshots, server.id);
+      logger.info({ serverId: server.id, hosts: snapshots.length }, "zabbix quick sync completed");
+    } catch (error) {
+      logger.warn({
+        serverId: server.id,
+        error: error instanceof Error ? { message: error.message } : error
+      }, "zabbix quick sync server failed");
     }
   }
 

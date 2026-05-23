@@ -95,14 +95,14 @@ export interface Topology {
     targetInterfaceAlias?: string;
     sourceInterface?: string;
     targetInterface?: string;
-    cableType?: "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
+    cableType?: "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other" | "signal";
     color?: string;
     strokeWidth?: number;
     lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
     badgeFontSize?: number;
     showTraffic?: boolean;
     showLabel?: boolean;
-    routing?: "straight" | "malleable";
+    routing?: "straight" | "malleable" | "wave";
     waypoints?: Array<{ x: number; y: number }>;
     waypointDX?: number;
     waypointDY?: number;
@@ -111,6 +111,10 @@ export interface Topology {
     signalTxMetricKey?: string;
     signalRxMetricKey?: string;
     signalHostId?: string;
+    showRadioSignal?: boolean;
+    radioSignalLabel?: string;
+    radioSignalHostId?: string;
+    radioSignalMetricKey?: string;
     bandwidthLimit?: number;
   }>;
 }

@@ -116,7 +116,23 @@ function extractMetrics(items: ZabbixItem[]): DeviceMetric[] {
       updatedAt: item.lastclock ? new Date(Number(item.lastclock) * 1000).toISOString() : undefined
     }));
 
-  return [...standard, ...optical];
+  const radio = items
+    .filter((item) =>
+      !optical.some((o) => o.key === item.key_) &&
+      (
+        /rssi|snr|signal|ccq|noise|airmax|modulation|frequency|channel|tx\.rate|rx\.rate|capacity|ack\.timeout|distance|radio/i.test(item.key_) ||
+        /rssi|snr|signal strength|signal quality|ccq|noise floor|airmax|modulation|frequency|channel|tx rate|rx rate|radio/i.test(item.name)
+      )
+    )
+    .map<DeviceMetric>((item) => ({
+      key: item.key_,
+      label: item.name,
+      value: parseNumeric(item.lastvalue),
+      unit: item.units,
+      updatedAt: item.lastclock ? new Date(Number(item.lastclock) * 1000).toISOString() : undefined
+    }));
+
+  return [...standard, ...optical, ...radio];
 }
 
 function extractPorts(items: ZabbixItem[]): PortMetric[] {

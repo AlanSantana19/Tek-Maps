@@ -3,7 +3,7 @@ import type { EdgeProps } from "@xyflow/react";
 import { createContext, useContext, useState } from "react";
 import type { DeviceSnapshot } from "../types";
 
-export type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other";
+export type CableType = "fiber" | "utp" | "radio" | "wireless" | "vpn" | "other" | "signal";
 
 const CABLE_TYPE_LABELS: Record<CableType, string> = {
   fiber:    "Fibra",
@@ -12,7 +12,40 @@ const CABLE_TYPE_LABELS: Record<CableType, string> = {
   wireless: "Wireless",
   vpn:      "VPN",
   other:    "Outro",
+  signal:   "Sinal de Rádio",
 };
+
+function generateWavePath(x1: number, y1: number, x2: number, y2: number, amplitude = 8): string {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 2) return `M ${x1} ${y1} L ${x2} ${y2}`;
+
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+
+  const amp = Math.min(amplitude, len * 0.12);
+  const halfCycleLen = 20;
+  let n = Math.max(2, Math.round(len / halfCycleLen));
+  if (n % 2 !== 0) n += 1;
+
+  let d = `M ${x1} ${y1}`;
+  for (let i = 0; i < n; i++) {
+    const sign = i % 2 === 0 ? 1 : -1;
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    const ex = x1 + dx * t1;
+    const ey = y1 + dy * t1;
+    const c1x = x1 + dx * (t0 + (t1 - t0) / 3) + px * sign * amp;
+    const c1y = y1 + dy * (t0 + (t1 - t0) / 3) + py * sign * amp;
+    const c2x = x1 + dx * (t0 + 2 * (t1 - t0) / 3) + px * sign * amp;
+    const c2y = y1 + dy * (t0 + 2 * (t1 - t0) / 3) + py * sign * amp;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${ex} ${ey}`;
+  }
+  return d;
+}
 
 export type Waypoint = { x: number; y: number };
 
@@ -32,8 +65,7 @@ export type LinkEdgePayload = {
   badgeFontSize?: number;
   showTraffic?: boolean;
   showLabel?: boolean;
-  routing?: "straight" | "malleable";
-  // Waypoint offset from cable midpoint (used by both malleable and legacy cables)
+  routing?: "straight" | "malleable" | "wave";
   waypointDX?: number;
   waypointDY?: number;
   showSignal?: boolean;
@@ -41,6 +73,10 @@ export type LinkEdgePayload = {
   signalTxMetricKey?: string;
   signalRxMetricKey?: string;
   signalHostId?: string;
+  showRadioSignal?: boolean;
+  radioSignalLabel?: string;
+  radioSignalHostId?: string;
+  radioSignalMetricKey?: string;
   linkRole?: "primary" | "backup";
   showLinkRole?: boolean;
   bandwidthLimit?: number;
@@ -72,9 +108,6 @@ export function LinkEdge({
   const waypointDY = data?.waypointDY ?? 0;
 
   // ── Path & badge position ──────────────────────────────────────────────────
-  // "malleable" → orthogonal Z-path (3 right-angle segments).
-  // "straight" or undefined (legacy) → straight line.
-  //   waypointDX shifts the vertical fold left/right from the midpoint (malleable only).
   let edgePath: string;
   let badgeX: number;
   let badgeY: number;
@@ -83,6 +116,10 @@ export function LinkEdge({
     const foldX = (sourceX + targetX) / 2 + waypointDX;
     edgePath = `M ${sourceX} ${sourceY} L ${foldX} ${sourceY} L ${foldX} ${targetY} L ${targetX} ${targetY}`;
     badgeX = foldX;
+    badgeY = (sourceY + targetY) / 2;
+  } else if (routing === "wave") {
+    edgePath = generateWavePath(sourceX, sourceY, targetX, targetY);
+    badgeX = (sourceX + targetX) / 2;
     badgeY = (sourceY + targetY) / 2;
   } else {
     edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
@@ -95,7 +132,8 @@ export function LinkEdge({
   const strokeWidth     = data?.strokeWidth ?? 2;
   const showTraffic     = data?.showTraffic ?? true;
   const badgeFontSize   = Math.min(24, Math.max(8, data?.badgeFontSize ?? 10));
-  const configuredDash  = data?.lineStyle === "dashed"  ? "8 6"
+  const configuredDash  = routing === "wave" ? undefined
+                        : data?.lineStyle === "dashed"  ? "8 6"
                         : data?.lineStyle === "dotted"  ? "2 4"
                         : data?.lineStyle === "dashdot" ? "12 4 2 4"
                         : undefined;
@@ -121,7 +159,7 @@ export function LinkEdge({
   const bwThresholdColor  = bwCritical ? "#ef4444" : bwWarning ? "#f59e0b" : null;
 
   const strokeColor = isDown ? "#ef4444" : (bwThresholdColor ?? configuredColor);
-  const strokeDash  = isDown ? "8 5"     : configuredDash;
+  const strokeDash  = (isDown && routing !== "wave") ? "8 5" : configuredDash;
 
   const totalBps = txBps + rxBps;
   const animDur = totalBps >= 1e9 ? "0.6s"
@@ -139,9 +177,18 @@ export function LinkEdge({
   const signalRxItem  = data?.signalRxMetricKey ? signalMetrics.find((m) => m.key === data!.signalRxMetricKey) : undefined;
 
   const hasSignalData  = showSignal && (!!signalTxItem || !!signalRxItem);
+
+  // ── Radio Signal ────────────────────────────────────────────────────────────
+  const showRadioSignal     = data?.showRadioSignal ?? false;
+  const radioSignalLabel    = data?.radioSignalLabel;
+  const radioSignalHostId   = data?.radioSignalHostId ?? data?.sourceHostId;
+  const radioSignalMetrics  = radioSignalHostId ? (snapshots.get(radioSignalHostId)?.metrics ?? []) : [];
+  const radioSignalItem     = data?.radioSignalMetricKey ? radioSignalMetrics.find((m) => m.key === data!.radioSignalMetricKey) : undefined;
+  const hasRadioSignalData  = showRadioSignal && !!radioSignalItem;
   const showBadge      = showTraffic && hasInterfaces;
   const isMaleavel     = routing === "malleable";
-  const tracadoLabel   = isMaleavel ? "Maleável/Dobrável" : "Reto";
+  const isWave         = routing === "wave";
+  const tracadoLabel   = isWave ? "Onda" : isMaleavel ? "Maleável/Dobrável" : "Reto";
   const cableTypeLabel = (data?.showLabel ?? true) && data?.cableType ? CABLE_TYPE_LABELS[data.cableType] : undefined;
 
   const edgeStyle = {
@@ -432,7 +479,20 @@ export function LinkEdge({
                 )}
               </>
             ) : null}
-            {(hasInterfaces || hasSignalData) && linkRole && <div className="edge-tooltip-divider" />}
+            {hasRadioSignalData ? (
+              <>
+                {(hasInterfaces || hasSignalData) && <div className="edge-tooltip-divider" />}
+                {radioSignalLabel && <div className="edge-tooltip-title">{radioSignalLabel}</div>}
+                <div className="edge-tooltip-row">
+                  <span className="edge-tooltip-label" style={{ color: "#a855f7" }}>Rádio</span>
+                  <span className="edge-tooltip-value">
+                    {String(radioSignalItem!.value)}
+                    {radioSignalItem!.unit ? ` ${radioSignalItem!.unit}` : ""}
+                  </span>
+                </div>
+              </>
+            ) : null}
+            {(hasInterfaces || hasSignalData || hasRadioSignalData) && linkRole && <div className="edge-tooltip-divider" />}
             {linkRole && (
               <div className="edge-tooltip-row">
                 <span className="edge-tooltip-label">Papel</span>

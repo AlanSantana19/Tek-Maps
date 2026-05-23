@@ -10,7 +10,8 @@ const schema = z.object({
   ZABBIX_URL: z.string().url(),
   ZABBIX_USER: z.string().min(1),
   ZABBIX_PASSWORD: z.string().min(1),
-  ZABBIX_POLL_INTERVAL_MS: z.coerce.number().int().min(5000).default(15000),
+  ZABBIX_POLL_INTERVAL_MS: z.coerce.number().int().min(5000).default(30000),
+  ZABBIX_QUICK_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
   ZABBIX_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30000)
 });
 

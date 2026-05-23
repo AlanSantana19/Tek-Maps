@@ -51,6 +51,7 @@ const sync = new ZabbixSyncService(
   cacheRepository,
   config.ZABBIX_POLL_INTERVAL_MS,
   config.ZABBIX_REQUEST_TIMEOUT_MS,
+  config.ZABBIX_QUICK_POLL_INTERVAL_MS,
   {
     id: "00000000-0000-0000-0000-000000000000",
     name: "Env Zabbix",
