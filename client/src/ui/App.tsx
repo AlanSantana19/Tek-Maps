@@ -3626,11 +3626,20 @@ function LiveViewer({
   }, [selected?.id, availableTopologies]);
 
   useEffect(() => {
+    if (!selected) return;
+    const timer = setTimeout(() => {
+      const w = frameRef.current?.offsetWidth ?? window.innerWidth;
+      rfInstanceRef.current?.fitView({ padding: 5 / Math.max(w - 10, 1), duration: 350 });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [selected?.id]);
+
+  useEffect(() => {
     function onFsChange() {
       setIsFullscreen(!!document.fullscreenElement);
-      // aguarda o browser redimensionar o canvas antes de centralizar
       setTimeout(() => {
-        rfInstanceRef.current?.fitView({ padding: 0.12, duration: 350 });
+        const w = frameRef.current?.offsetWidth ?? window.innerWidth;
+        rfInstanceRef.current?.fitView({ padding: 5 / Math.max(w - 10, 1), duration: 350 });
       }, 300);
     }
     document.addEventListener("fullscreenchange", onFsChange);
@@ -5089,6 +5098,7 @@ function TopologyCanvas({
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
   const [guideFlowX, setGuideFlowX] = useState<number[]>([]);
   const [guideFlowY, setGuideFlowY] = useState<number[]>([]);
+  const canvasRef = useRef<HTMLElement>(null);
 
   const handleNodeDrag = useCallback(
     (_: MouseEvent, draggedNode: DeviceFlowNode, draggedNodes: DeviceFlowNode[]) => {
@@ -5125,7 +5135,7 @@ function TopologyCanvas({
   const viewport = rfInstance?.getViewport() ?? { x: 0, y: 0, zoom: 1 };
 
   return (
-    <section className="canvas canvas--alignable">
+    <section className="canvas canvas--alignable" ref={canvasRef}>
       {guideFlowX.map((fx, i) => (
         <div
           key={`gx-${i}`}
@@ -5152,9 +5162,6 @@ function TopologyCanvas({
           onInit={(inst) => {
             setRfInstance(inst);
             onInit?.(inst);
-            if (readonly) {
-              requestAnimationFrame(() => inst.fitView({ padding: 0.12, duration: 350 }));
-            }
           }}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
@@ -5170,7 +5177,8 @@ function TopologyCanvas({
           snapToGrid={!readonly && snapEnabled}
           snapGrid={[4, 4]}
           proOptions={{ hideAttribution: true }}
-          fitView
+          fitView={!readonly}
+          fitViewOptions={!readonly ? { padding: 0.12 } : undefined}
         >
           {showGrid ? <Background variant={BackgroundVariant.Lines} gap={40} size={1} color="#1c2330" /> : null}
         </ReactFlow>
