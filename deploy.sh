@@ -9,5 +9,5 @@ export BUILD_DATE=$(date +%Y%m%d%H%M)
 
 echo "Building Tek Map v0.3.0.${GIT_COMMIT_COUNT} · ${GIT_SHA} (${BUILD_DATE})"
 docker compose build "$@" server client
-docker compose up -d
+docker compose up -d --force-recreate
 echo "Done."

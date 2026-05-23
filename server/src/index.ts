@@ -60,7 +60,11 @@ const sync = new ZabbixSyncService(
     active: true
   }
 );
-sync.on("snapshots", (snapshots) => hub.broadcastSnapshots(snapshots));
+sync.on("snapshots", () => {
+  void cacheRepository.list()
+    .then((snapshots) => hub.broadcastSnapshots(snapshots))
+    .catch((error) => logger.error({ error }, "failed to broadcast cached zabbix snapshots"));
+});
 
 server.listen(config.PORT, () => {
   logger.info({ port: config.PORT }, "tek-map api listening");

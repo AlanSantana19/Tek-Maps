@@ -51,6 +51,7 @@ export interface Topology {
   topologyType?: "isp" | "corporate";
   zabbixServerId?: string;
   zabbixServerIds?: string[];
+  showGrid?: boolean;
   nodes: Array<{
     id: string;
     hostId?: string;

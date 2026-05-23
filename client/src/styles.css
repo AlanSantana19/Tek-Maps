@@ -404,6 +404,7 @@ select {
   grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 18px;
+  align-items: stretch;
 }
 
 .dashboard-panels {
@@ -420,87 +421,81 @@ select {
 }
 
 .dashboard-panels--2col {
-  grid-template-columns: 1fr 1fr;
-  align-items: stretch;
-  min-height: 500px;
+  grid-template-columns: 5fr 7fr;
+  align-items: start;
 }
 
-.dashboard-col {
+.panel--online,
+.panel--activity {
+  height: 260px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  height: 100%;
-}
-
-.dashboard-col .panel {
-  flex: 1;
-  min-height: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
-.dashboard-col .panel .activity-list,
-.dashboard-col .panel .event-list--scroll {
+.panel--online .activity-list,
+.panel--activity .activity-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  max-height: none;
   align-content: start;
   scrollbar-width: thin;
   scrollbar-color: #273244 #0b0d10;
 }
 
-.dashboard-col .panel .activity-list::-webkit-scrollbar,
-.dashboard-col .panel .event-list--scroll::-webkit-scrollbar {
+.panel--online .activity-list::-webkit-scrollbar,
+.panel--activity .activity-list::-webkit-scrollbar {
   width: 4px;
 }
 
-.dashboard-col .panel .activity-list::-webkit-scrollbar-track,
-.dashboard-col .panel .event-list--scroll::-webkit-scrollbar-track {
+.panel--online .activity-list::-webkit-scrollbar-track,
+.panel--activity .activity-list::-webkit-scrollbar-track {
   background: #0b0d10;
 }
 
-.dashboard-col .panel .activity-list::-webkit-scrollbar-thumb,
-.dashboard-col .panel .event-list--scroll::-webkit-scrollbar-thumb {
+.panel--online .activity-list::-webkit-scrollbar-thumb,
+.panel--activity .activity-list::-webkit-scrollbar-thumb {
+  background: #273244;
+  border-radius: 4px;
+}
+
+.panel--events {
+  height: 260px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel--events .event-list--scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-width: thin;
+  scrollbar-color: #273244 #0b0d10;
+}
+
+.panel--events .event-list--scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.panel--events .event-list--scroll::-webkit-scrollbar-track {
+  background: #0b0d10;
+}
+
+.panel--events .event-list--scroll::-webkit-scrollbar-thumb {
   background: #273244;
   border-radius: 4px;
 }
 
 .event-list--scroll {
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #273244 #0b0d10;
-}
-
-.panel--full-col {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  box-sizing: border-box;
-}
-
-.panel--full-col .activity-list--scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  align-content: start;
   scrollbar-width: thin;
   scrollbar-color: #273244 #0b0d10;
 }
 
-.panel--full-col .activity-list--scroll::-webkit-scrollbar {
-  width: 4px;
-}
-
-.panel--full-col .activity-list--scroll::-webkit-scrollbar-track {
-  background: #0b0d10;
-}
-
-.panel--full-col .activity-list--scroll::-webkit-scrollbar-thumb {
-  background: #273244;
-  border-radius: 4px;
-}
 
 .activity-list {
   display: grid;
@@ -510,7 +505,7 @@ select {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 10px auto 1fr;
+  grid-template-columns: 10px minmax(110px, auto) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -532,12 +527,24 @@ select {
 .activity-dot.online { background: #4ade80; }
 
 .activity-row--log {
-  grid-template-columns: 10px auto 1fr auto;
+  grid-template-columns: 10px minmax(110px, 0.9fr) minmax(0, 1.4fr) 148px;
+}
+
+.activity-row--simple {
+  border: none;
+  border-bottom: 1px solid #131820;
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 4px;
+}
+
+.activity-row--simple:last-child {
+  border-bottom: none;
 }
 
 .activity-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .activity-action { color: #91a1a9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.activity-time { color: #91a1a9; font-size: 12px; white-space: nowrap; }
+.activity-time { color: #91a1a9; font-size: 12px; white-space: nowrap; text-align: right; }
 
 .activity-pagination {
   display: flex;
@@ -586,8 +593,11 @@ select {
 
 .summary-card {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   padding: 16px;
+  min-width: 0;
+  align-content: center;
+  text-align: left;
 }
 
 .summary-card span {
@@ -596,7 +606,22 @@ select {
 }
 
 .summary-card strong {
-  font-size: 26px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e7eef2;
+}
+
+.summary-card span {
+  color: #6b7b87;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .summary-card.ok {
@@ -640,13 +665,28 @@ select {
 .server-list {
   display: grid;
   gap: 8px;
+  align-content: start;
+}
+
+.panel--bandwidth {
+  max-height: 260px;
+  min-height: 0;
+}
+
+.panel--bandwidth .event-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #273244 #0b0d10;
 }
 
 .event-row {
   display: grid;
-  grid-template-columns: 10px 1fr auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 10px;
   border: 1px solid #202833;
   border-radius: 8px;
@@ -3623,7 +3663,8 @@ select {
 }
 
 .event-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
 }
@@ -3633,6 +3674,7 @@ select {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
 }
 
@@ -3652,7 +3694,8 @@ select {
 }
 
 .event-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -3660,16 +3703,6 @@ select {
   letter-spacing: 0.04em;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.event-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
 }
 
 .event-badge--danger {

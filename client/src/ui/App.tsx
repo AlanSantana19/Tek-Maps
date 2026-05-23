@@ -11,6 +11,7 @@ import {
   Copy,
   Download,
   Eye,
+  Grid3x3,
   HardDrive,
   Image,
   KeyRound,
@@ -256,6 +257,32 @@ function clearFavicon() {
   setFaviconHref(TRANSPARENT_FAVICON);
 }
 
+function snapshotLookupKey(hostId: string, zabbixServerId?: string) {
+  return `${zabbixServerId ?? ""}:${hostId}`;
+}
+
+function buildSnapshotMap(snapshots: DeviceSnapshot[]) {
+  const map = new Map<string, DeviceSnapshot>();
+  for (const snapshot of snapshots) {
+    map.set(snapshotLookupKey(snapshot.hostId, snapshot.zabbixServerId), snapshot);
+    if (!map.has(snapshot.hostId)) {
+      map.set(snapshot.hostId, snapshot);
+    }
+  }
+  return map;
+}
+
+function getSnapshot(
+  snapshotsByHost: Map<string, DeviceSnapshot>,
+  hostId?: string,
+  zabbixServerId?: string
+) {
+  if (!hostId) {
+    return undefined;
+  }
+  return snapshotsByHost.get(snapshotLookupKey(hostId, zabbixServerId)) ?? snapshotsByHost.get(hostId);
+}
+
 const DEFAULT_LOGIN_LOGO_CONFIG: LoginLogoConfig = {
   width: 96,
   offsetX: 0,
@@ -278,6 +305,7 @@ export function App() {
   const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>([]);
   const [selectedTopology, setSelectedTopology] = useState<Topology & { id?: string }>({
     name: "Topologia principal",
+    showGrid: true,
     nodes: [],
     edges: []
   });
@@ -333,7 +361,7 @@ export function App() {
   const [faviconConfig, setFaviconConfig] = useState<FaviconConfig>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "1");
 
-  const snapshotsByHost = useMemo(() => new Map(hosts.map((host) => [host.hostId, host])), [hosts]);
+  const snapshotsByHost = useMemo(() => buildSnapshotMap(hosts), [hosts]);
   const alertsCount = hosts.reduce((total, host) => total + host.alerts.length, 0);
   const downHosts = hosts.filter((host) => host.status === "down").length;
 
@@ -416,7 +444,8 @@ export function App() {
     for (const topology of topologies) {
       for (const edge of topology.edges) {
         if (!edge.bandwidthLimit || !edge.sourceHostId || !edge.sourceOutInterface) continue;
-        const snap = snapshotsByHost.get(edge.sourceHostId);
+        const sourceNode = topology.nodes.find((node) => node.id === edge.source);
+        const snap = getSnapshot(snapshotsByHost, edge.sourceHostId, sourceNode?.zabbixServerId);
         const port = snap?.ports.find((p) => p.id === edge.sourceOutInterface);
         if (!port) continue;
         const peakBps = Math.max(port.outBps ?? 0, port.inBps ?? 0);
@@ -505,7 +534,7 @@ export function App() {
       ...node,
       data: {
         ...node.data,
-        snapshot: node.data.hostId ? snapshotsByHost.get(String(node.data.hostId)) : undefined
+        snapshot: getSnapshot(snapshotsByHost, node.data.hostId ? String(node.data.hostId) : undefined, node.data.zabbixServerId)
       }
     })));
   }, [snapshotsByHost, setNodes]);
@@ -854,7 +883,8 @@ export function App() {
     setEdges((current) => current.filter((edge) => edge.id !== edgeId));
   }
 
-  async function persistTopology() {
+  async function persistTopology(showGridOverride?: boolean) {
+    const showGrid = showGridOverride ?? selectedTopology.showGrid ?? true;
     setSaving(true);
     setError(null);
     try {
@@ -863,13 +893,15 @@ export function App() {
         name: selectedTopology.name,
         zabbixServerId: selectedTopology.zabbixServerId,
         zabbixServerIds: selectedTopology.zabbixServerIds,
+        showGrid,
         nodes: nodes.map(fromFlowNode),
         edges: edges.map(fromFlowEdge)
       });
-      setSelectedTopology(topology);
+      const savedTopology = { ...topology, showGrid: topology.showGrid ?? showGrid };
+      setSelectedTopology(savedTopology);
       setTopologies((current) => {
-        const exists = current.some((item) => item.id === topology.id);
-        return exists ? current.map((item) => item.id === topology.id ? topology : item) : [topology, ...current];
+        const exists = current.some((item) => item.id === savedTopology.id);
+        return exists ? current.map((item) => item.id === savedTopology.id ? savedTopology : item) : [savedTopology, ...current];
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao salvar");
@@ -998,7 +1030,7 @@ export function App() {
             value={selectedTopology.name}
             onChange={(event) => setSelectedTopology({ ...selectedTopology, name: event.target.value })}
           />
-          <button className="save-button" onClick={persistTopology} disabled={saving}>
+          <button className="save-button" onClick={() => persistTopology()} disabled={saving}>
             <Save size={18} />
             {saving ? "Salvando" : "Salvar topologia"}
           </button>
@@ -1039,6 +1071,7 @@ export function App() {
           <TopologyEditor
             topologyName={selectedTopology.name}
             topologyZabbixServerIds={selectedTopology.zabbixServerIds ?? (selectedTopology.zabbixServerId ? [selectedTopology.zabbixServerId] : [])}
+            topologyShowGrid={selectedTopology.showGrid ?? true}
             snapshotsByHost={snapshotsByHost}
             hosts={hosts}
             nodes={nodes}
@@ -1073,11 +1106,17 @@ export function App() {
             onUndo={undo}
             canUndo={historyLength > 0}
             onRemoveSelectedNodes={removeSelectedNodes}
+            onShowGridChange={(showGrid) => {
+              setSelectedTopology((current) => ({ ...current, showGrid }));
+              setTopologies((current) => current.map((topology) => (
+                topology.id === selectedTopology.id ? { ...topology, showGrid } : topology
+              )));
+            }}
           />
         ) : null}
 
         {activeSection === "viewer" ? (
-          <LiveViewer snapshotsByHost={snapshotsByHost} customIcons={customIcons} />
+          <LiveViewer topologies={topologies} snapshotsByHost={snapshotsByHost} customIcons={customIcons} />
         ) : null}
         {activeSection === "server" ? <ServerSettings /> : null}
         {activeSection === "icons" ? <CustomIconsPanel customIcons={customIcons} onCustomIconsChange={setCustomIcons} /> : null}
@@ -1524,10 +1563,6 @@ function Dashboard({
     return merged;
   }, [hostEvents, dbEvents]);
 
-  const EVENTS_PER_PAGE = 10;
-  const totalEventPages = Math.max(1, Math.ceil(recentEvents.length / EVENTS_PER_PAGE));
-  const pagedEvents = recentEvents.slice((eventsPage - 1) * EVENTS_PER_PAGE, eventsPage * EVENTS_PER_PAGE);
-
   useEffect(() => { setEventsPage(1); }, [hostEvents]);
 
   useEffect(() => {
@@ -1632,66 +1667,30 @@ function Dashboard({
       )}
 
       <div className="dashboard-panels dashboard-panels--2col">
-        <div className="dashboard-col">
-          <section className="panel">
-            <h2>Online agora</h2>
-            <div className="activity-list">
-              {onlineUsers.length === 0 ? (
-                <p className="empty-state">Nenhum usuario conectado.</p>
-              ) : (
-                onlineUsers.map((user, i) => (
-                  <div className="activity-row" key={`${user.name}-${i}`}>
-                    <span className="activity-dot online" />
-                    <span className="activity-name">{user.name}</span>
-                    <span className="activity-action">{user.ip}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-          <section className="panel panel--events">
-            <h2>Eventos recentes</h2>
-            <div className="event-list event-list--scroll">
-              {recentEvents.length === 0 ? (
-                <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
-              ) : (
-                recentEvents.map((event) => (
-                  <div className="event-row" key={event.id}>
-                    <span className={`status-dot ${
-                      event.type === "host_down" ? "down"
-                      : event.type === "host_up" ? "up"
-                      : event.type === "bw_critical" ? "down"
-                      : "bw-warning"
-                    }`} />
-                    <div className="event-row-body">
-                      <strong>{event.label}</strong>
-                      <span className="event-detail">{event.detail ?? ""}</span>
-                    </div>
-                    <span className={`event-badge ${
-                      event.type === "host_down" ? "event-badge--danger"
-                      : event.type === "host_up" ? "event-badge--ok"
-                      : event.type === "bw_critical" ? "event-badge--danger"
-                      : "event-badge--warning"
-                    }`}>
-                      {event.type === "host_down" ? "OFFLINE"
-                       : event.type === "host_up" ? "ONLINE"
-                       : event.type === "bw_critical" ? "CRITICO"
-                       : "ATENCAO"}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
-        <section className="panel panel--full-col">
+        <section className="panel panel--online">
+          <h2>Online agora</h2>
+          <div className="activity-list activity-list--scroll">
+            {onlineUsers.length === 0 ? (
+              <p className="empty-state">Nenhum usuario conectado.</p>
+            ) : (
+              onlineUsers.map((user, i) => (
+                <div className="activity-row" key={`${user.name}-${i}`}>
+                  <span className="activity-dot online" />
+                  <span className="activity-name">{user.name}</span>
+                  <span className="activity-action">{user.ip}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+        <section className="panel panel--activity">
           <h2>Atividade recente</h2>
           <div className="activity-list activity-list--scroll">
             {todayLogs.length === 0 ? (
               <p className="empty-state">Nenhuma atividade registrada hoje.</p>
             ) : (
-              pagedLogs.map((entry) => (
-                <div className="activity-row activity-row--log" key={entry.id}>
+              todayLogs.map((entry) => (
+                <div className="activity-row activity-row--log activity-row--simple" key={entry.id}>
                   <span className={`activity-dot ${entry.action === "login" ? "login" : "edit"}`} />
                   <span className="activity-name">{entry.userName}</span>
                   <span className="activity-action">{entry.action === "login" ? "fez login" : `salvou "${entry.detail ?? "mapa"}"`}</span>
@@ -1700,13 +1699,42 @@ function Dashboard({
               ))
             )}
           </div>
-          {totalPages > 1 && (
-            <div className="activity-pagination">
-              <button className="activity-page-btn" onClick={() => setActivityPage((p) => Math.max(1, p - 1))} disabled={activityPage === 1}>Anterior</button>
-              <span className="activity-page-info">{activityPage} / {totalPages}</span>
-              <button className="activity-page-btn" onClick={() => setActivityPage((p) => Math.min(totalPages, p + 1))} disabled={activityPage === totalPages}>Proxima</button>
-            </div>
-          )}
+        </section>
+      </div>
+      <div className="dashboard-panels">
+        <section className="panel panel--events">
+          <h2>Eventos recentes</h2>
+          <div className="event-list event-list--scroll">
+            {recentEvents.length === 0 ? (
+              <p className="empty-state">Nenhum evento detectado nesta sessao.</p>
+            ) : (
+              recentEvents.map((event) => (
+                <div className="event-row" key={event.id}>
+                  <span className={`status-dot ${
+                    event.type === "host_down" ? "down"
+                    : event.type === "host_up" ? "up"
+                    : event.type === "bw_critical" ? "down"
+                    : "bw-warning"
+                  }`} />
+                  <div className="event-row-body">
+                    <strong>{event.label}</strong>
+                    <span className="event-detail">{event.detail ?? ""}</span>
+                  </div>
+                  <span className={`event-badge ${
+                    event.type === "host_down" ? "event-badge--danger"
+                    : event.type === "host_up" ? "event-badge--ok"
+                    : event.type === "bw_critical" ? "event-badge--danger"
+                    : "event-badge--warning"
+                  }`}>
+                    {event.type === "host_down" ? "OFFLINE"
+                     : event.type === "host_up" ? "ONLINE"
+                     : event.type === "bw_critical" ? "CRITICO"
+                     : "ATENCAO"}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </section>
       </div>
     </section>
@@ -1952,6 +1980,7 @@ function EditorMaps({
 function TopologyEditor({
   topologyName,
   topologyZabbixServerIds,
+  topologyShowGrid,
   snapshotsByHost,
   hosts,
   nodes,
@@ -1977,10 +2006,12 @@ function TopologyEditor({
   onPasteNodes,
   onUndo,
   canUndo,
-  onRemoveSelectedNodes
+  onRemoveSelectedNodes,
+  onShowGridChange
 }: {
   topologyName: string;
   topologyZabbixServerIds: string[];
+  topologyShowGrid: boolean;
   snapshotsByHost: Map<string, DeviceSnapshot>;
   hosts: DeviceSnapshot[];
   nodes: DeviceFlowNode[];
@@ -2018,7 +2049,7 @@ function TopologyEditor({
   onUpdateLinkEdge: (edgeId: string, value: LinkEdgeData & { label?: string }) => void;
   onMoveLinkEdge: (edgeId: string, sourceId: string, targetId: string) => void;
   onRemoveLinkEdge: (edgeId: string) => void;
-  onSave: () => void;
+  onSave: (showGrid?: boolean) => void;
   onNodesChange: OnNodesChange<DeviceFlowNode>;
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
@@ -2026,8 +2057,10 @@ function TopologyEditor({
   onUndo: () => void;
   canUndo: boolean;
   onRemoveSelectedNodes: (nodeIds: string[]) => void;
+  onShowGridChange: (showGrid: boolean) => void;
 }) {
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [showGrid, setShowGrid] = useState(topologyShowGrid);
   const [clipboardCount, setClipboardCount] = useState(() => {
     try {
       const raw = localStorage.getItem(CLIPBOARD_KEY);
@@ -2178,7 +2211,7 @@ function TopologyEditor({
   const filteredSourceInterfaces = filterInterfaces(sourceInterfaces, linkForm.sourceSearch, onlyWithTraffic);
   const selectedSourceInterface = sourceInterfaces.find((port) => port.id === linkForm.sourceOutInterface);
   const signalEffectiveHostId = linkForm.signalHostId || draftSourceNode?.data.hostId;
-  const signalAllMetrics = signalEffectiveHostId ? (snapshotsByHost.get(String(signalEffectiveHostId))?.metrics ?? []) : [];
+  const signalAllMetrics = signalEffectiveHostId ? (getSnapshot(snapshotsByHost, String(signalEffectiveHostId), draftSourceNode?.data.zabbixServerId)?.metrics ?? []) : [];
   const signalOpticalMetrics = signalAllMetrics.filter((m) => m.unit === "dBm" || /optical|sfp|pon|rx\.power|tx\.power|optic|rssi|snr|signal/i.test(m.key) || /optical|sfp|pon|rx power|tx power|rssi|snr/i.test(m.label));
   const signalOtherMetrics = signalAllMetrics.filter((m) => !signalOpticalMetrics.includes(m));
   const filteredHostPickerHosts = hostPickerHosts.filter((host) => {
@@ -2193,6 +2226,10 @@ function TopologyEditor({
   useEffect(() => {
     void apiGet<ZabbixServerConfig[]>("/api/server/zabbix").then(setZabbixServers).catch(() => setZabbixServers([]));
   }, []);
+
+  useEffect(() => {
+    setShowGrid(topologyShowGrid);
+  }, [topologyShowGrid]);
 
   useEffect(() => {
     if (!hostPickerOpen || hostPickerServerId || zabbixServers.length === 0) {
@@ -2655,6 +2692,20 @@ function TopologyEditor({
               <Magnet size={17} />
             </button>
             <button
+              className={`tool-button ${showGrid ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                const next = !showGrid;
+                setShowGrid(next);
+                onShowGridChange(next);
+                onSave(next);
+              }}
+              title={showGrid ? "Grade visivel — clique para ocultar" : "Grade oculta — clique para mostrar"}
+              aria-label="Alternar grade do mapa"
+            >
+              <Grid3x3 size={17} />
+            </button>
+            <button
               className="tool-button"
               type="button"
               onClick={onUndo}
@@ -2706,7 +2757,7 @@ function TopologyEditor({
             </div>
           </div>
           <div className="editor-side-actions">
-            <button className="tool-button save-tool-button" onClick={onSave} disabled={saving} title="Salvar" aria-label="Salvar">
+            <button className="tool-button save-tool-button" onClick={() => onSave(showGrid)} disabled={saving} title="Salvar" aria-label="Salvar">
               <Save size={18} />
             </button>
           </div>
@@ -2726,6 +2777,7 @@ function TopologyEditor({
           onConnect={onConnect}
           nodesDraggable
           snapEnabled={snapEnabled}
+          showGrid={showGrid}
         />
       </section>
       {hostPickerOpen ? (
@@ -3522,8 +3574,16 @@ function TopologyEditor({
 
 const VIEWER_REFRESH_INTERVAL = 10;
 
-function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<string, DeviceSnapshot>; customIcons: CustomIcon[] }) {
-  const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>([]);
+function LiveViewer({
+  topologies: availableTopologies,
+  snapshotsByHost,
+  customIcons
+}: {
+  topologies: Array<Topology & { id: string }>;
+  snapshotsByHost: Map<string, DeviceSnapshot>;
+  customIcons: CustomIcon[];
+}) {
+  const [topologies, setTopologies] = useState<Array<Topology & { id: string }>>(availableTopologies);
   const [selected, setSelected] = useState<(Topology & { id: string }) | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -3540,8 +3600,12 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
   );
 
   useEffect(() => {
-    void apiGet<Array<Topology & { id: string }>>("/api/topologies").then(setTopologies).catch(() => {});
-  }, []);
+    setTopologies(availableTopologies);
+    if (selected) {
+      const updated = availableTopologies.find((topology) => topology.id === selected.id);
+      if (updated) setSelected(updated);
+    }
+  }, [availableTopologies, selected?.id]);
 
   useEffect(() => {
     if (!selected) return;
@@ -3550,7 +3614,8 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
     const refresh = setInterval(async () => {
       try {
         const updated = await apiGet<Topology & { id: string }>(`/api/topologies/${selected.id}`);
-        setSelected(updated);
+        const local = availableTopologies.find((topology) => topology.id === updated.id);
+        setSelected({ ...updated, showGrid: local?.showGrid ?? updated.showGrid });
       } catch {
         setSelected(null);
       }
@@ -3558,7 +3623,7 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
     }, VIEWER_REFRESH_INTERVAL * 1000);
 
     return () => clearInterval(refresh);
-  }, [selected?.id]);
+  }, [selected?.id, availableTopologies]);
 
   useEffect(() => {
     function onFsChange() {
@@ -3627,6 +3692,7 @@ function LiveViewer({ snapshotsByHost, customIcons }: { snapshotsByHost: Map<str
           edges={viewEdges}
           snapshotsByHost={snapshotsByHost}
           readonly
+          showGrid={selected.showGrid ?? true}
           onInit={(inst) => { rfInstanceRef.current = inst; }}
         />
       </div>
@@ -5000,7 +5066,8 @@ function TopologyCanvas({
   onEdgesChange,
   onConnect,
   nodesDraggable,
-  snapEnabled = true
+  snapEnabled = true,
+  showGrid = true
 }: {
   nodes: DeviceFlowNode[];
   edges: Edge[];
@@ -5017,6 +5084,7 @@ function TopologyCanvas({
   onConnect?: (connection: Connection) => void;
   nodesDraggable?: boolean;
   snapEnabled?: boolean;
+  showGrid?: boolean;
 }) {
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
   const [guideFlowX, setGuideFlowX] = useState<number[]>([]);
@@ -5104,7 +5172,7 @@ function TopologyCanvas({
           proOptions={{ hideAttribution: true }}
           fitView
         >
-          <Background variant={BackgroundVariant.Lines} gap={40} size={1} color="#1c2330" />
+          {showGrid ? <Background variant={BackgroundVariant.Lines} gap={40} size={1} color="#1c2330" /> : null}
         </ReactFlow>
       </SnapshotsContext.Provider>
     </section>
@@ -5123,8 +5191,8 @@ function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
 function SummaryCard({ label, value, tone }: { label: string; value: number | string; tone?: "ok" | "warning" | "danger" }) {
   return (
     <article className={`summary-card ${tone ?? ""}`}>
-      <span>{label}</span>
       <strong>{value}</strong>
+      <span>{label}</span>
     </article>
   );
 }

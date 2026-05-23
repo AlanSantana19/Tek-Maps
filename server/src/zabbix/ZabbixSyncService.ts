@@ -64,6 +64,8 @@ export class ZabbixSyncService extends EventEmitter {
     }
 
     try {
+      const previousSnapshots = await this.cache.list(server.id);
+      const previousByHost = new Map(previousSnapshots.map((snapshot) => [snapshot.hostId, snapshot]));
       const client = new ZabbixClient({
         url: server.url,
         user: server.user,
@@ -115,11 +117,11 @@ export class ZabbixSyncService extends EventEmitter {
 
       const baseStatusItems = mergeItemsById(icmpItems, availabilityItems);
 
-      let items: any[] = [];
-      let interfaceItems: any[] = [];
+      let itemResult: BatchItemsResult = { items: [], failedHostIds: new Set() };
+      let interfaceItemResult: BatchItemsResult = { items: [], failedHostIds: new Set() };
       let problems: any[] = [];
       try {
-        [items, interfaceItems, problems] = await Promise.all([
+        [itemResult, interfaceItemResult, problems] = await Promise.all([
           fetchItemsInBatches(client, hostIds),
           fetchInterfaceItemsInBatches(client, hostIds),
           client.call<any[]>("problem.get", {
@@ -138,15 +140,23 @@ export class ZabbixSyncService extends EventEmitter {
         }, "zabbix sync falhou ao carregar itens, gravando apenas status base");
         const baseSnapshots = mapZabbixSnapshots(hosts, baseStatusItems, []).map((s) => ({
           ...s,
+          metrics: previousByHost.get(s.hostId)?.metrics ?? s.metrics,
+          ports: previousByHost.get(s.hostId)?.ports ?? s.ports,
           zabbixServerId: server.id
         }));
         await this.cache.replaceAll(baseSnapshots, server.id);
         return baseSnapshots;
       }
 
-      const allItems = mergeItemsById(icmpItems, availabilityItems, items, interfaceItems);
+      const allItems = mergeItemsById(icmpItems, availabilityItems, itemResult.items, interfaceItemResult.items);
       const snapshots = mapZabbixSnapshots(hosts, allItems, problems).map((snapshot) => ({
         ...snapshot,
+        metrics: itemResult.failedHostIds.has(snapshot.hostId)
+          ? (previousByHost.get(snapshot.hostId)?.metrics?.length ? previousByHost.get(snapshot.hostId)!.metrics : snapshot.metrics)
+          : snapshot.metrics,
+        ports: interfaceItemResult.failedHostIds.has(snapshot.hostId)
+          ? (previousByHost.get(snapshot.hostId)?.ports?.length ? previousByHost.get(snapshot.hostId)!.ports : snapshot.ports)
+          : snapshot.ports,
         zabbixServerId: server.id
       }));
       logger.info({
@@ -182,8 +192,14 @@ function mergeItemsById(...groups: any[][]): any[] {
 const HOST_BATCH_SIZE = 20;
 const ITEM_OUTPUT = ["itemid", "hostid", "name", "key_", "lastvalue", "units", "lastclock"] as const;
 
-async function fetchItemsInBatches(client: ZabbixClient, hostIds: string[]): Promise<any[]> {
-  const results: any[] = [];
+type BatchItemsResult = {
+  items: any[];
+  failedHostIds: Set<string>;
+};
+
+async function fetchItemsInBatches(client: ZabbixClient, hostIds: string[]): Promise<BatchItemsResult> {
+  const items: any[] = [];
+  const failedHostIds = new Set<string>();
   for (let i = 0; i < hostIds.length; i += HOST_BATCH_SIZE) {
     const batch = hostIds.slice(i, i + HOST_BATCH_SIZE);
     try {
@@ -193,19 +209,21 @@ async function fetchItemsInBatches(client: ZabbixClient, hostIds: string[]): Pro
         monitored: true,
         sortfield: "name"
       });
-      results.push(...batchItems);
+      items.push(...batchItems);
     } catch (error) {
+      batch.forEach((hostId) => failedHostIds.add(hostId));
       logger.warn(
         { batchStart: i, batchSize: batch.length, error: error instanceof Error ? error.message : error },
         "item batch falhou, continuando com demais batches"
       );
     }
   }
-  return results;
+  return { items, failedHostIds };
 }
 
-async function fetchInterfaceItemsInBatches(client: ZabbixClient, hostIds: string[]): Promise<any[]> {
-  const results: any[] = [];
+async function fetchInterfaceItemsInBatches(client: ZabbixClient, hostIds: string[]): Promise<BatchItemsResult> {
+  const items: any[] = [];
+  const failedHostIds = new Set<string>();
   for (let i = 0; i < hostIds.length; i += HOST_BATCH_SIZE) {
     const batch = hostIds.slice(i, i + HOST_BATCH_SIZE);
     try {
@@ -214,16 +232,17 @@ async function fetchInterfaceItemsInBatches(client: ZabbixClient, hostIds: strin
         hostids: batch,
         monitored: true,
         searchByAny: true,
-        search: { key_: ["net.if", "ifIn", "ifOut", "ifOper", "ifName", "ifDescr", "ifAlias", "ifHighSpeed", "ifSpeed"] },
+        search: { key_: ["net.if", "ifHC", "ifIn", "ifOut", "ifOper", "ifName", "ifDescr", "ifAlias", "ifHighSpeed", "ifSpeed"] },
         sortfield: "name"
       });
-      results.push(...batchItems);
+      items.push(...batchItems);
     } catch (error) {
+      batch.forEach((hostId) => failedHostIds.add(hostId));
       logger.warn(
         { batchStart: i, batchSize: batch.length, error: error instanceof Error ? error.message : error },
         "interface item batch falhou, continuando"
       );
     }
   }
-  return results;
+  return { items, failedHostIds };
 }

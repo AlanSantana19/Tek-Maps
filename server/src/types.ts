@@ -111,6 +111,7 @@ export interface Topology {
   topologyType?: "isp" | "corporate";
   zabbixServerId?: string;
   zabbixServerIds?: string[];
+  showGrid?: boolean;
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   updatedAt?: string;
