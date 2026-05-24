@@ -21,6 +21,7 @@ select {
 
 .login-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   background: #050607;
@@ -109,6 +110,7 @@ select {
 
 .app-shell {
   height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-columns: 280px 1fr;
   overflow: hidden;
@@ -2144,6 +2146,10 @@ select {
   font-weight: 600;
   color: #e7eef2;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 
@@ -3260,6 +3266,25 @@ select {
   }
 }
 
+/* ── Tablet (481px – 820px) ─────────────────────────────── */
+
+@media (max-width: 820px) and (min-width: 481px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-panels--2col,
+  .dashboard-panels--3col {
+    grid-template-columns: 1fr;
+  }
+
+  .branding-layout--nav {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Mobile (≤ 820px) ───────────────────────────────────── */
+
 @media (max-width: 820px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -3269,18 +3294,116 @@ select {
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid #202833;
+    overflow: hidden;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+  }
+
+  .brand {
+    flex-shrink: 0;
+  }
+
+  .brand span,
+  .brand small,
+  .brand-with-logo span,
+  .brand-with-logo small {
+    display: none;
+  }
+
+  .logout-button {
+    margin-top: 0;
   }
 
   .side-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    flex: 1;
+    min-width: 0;
+    scrollbar-width: none;
+  }
+
+  .side-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    flex-shrink: 0;
+    padding: 8px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    min-height: 44px;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar--collapsed {
+    padding: 8px 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sidebar--collapsed .brand-text,
+  .sidebar--collapsed .brand-with-logo span,
+  .sidebar--collapsed .brand-with-logo small {
+    display: revert;
+  }
+
+  .sidebar--collapsed .nav-logo-img {
+    max-width: unset !important;
+    width: unset !important;
+  }
+
+  .sidebar--collapsed .side-nav {
+    width: auto;
+    flex-direction: row;
+  }
+
+  .sidebar--collapsed .nav-item {
+    justify-content: flex-start;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .sidebar--collapsed .nav-item span {
+    display: inline;
+  }
+
+  .sidebar--collapsed .logout-button {
+    width: auto;
+    padding: 8px 10px;
+    justify-content: flex-start;
+  }
+
+  .sidebar--collapsed .logout-button span {
+    display: inline;
+  }
+
+  .sidebar-save {
+    display: none;
+  }
+
+  .logout-button {
+    flex-shrink: 0;
+    min-height: 44px;
   }
 
   .workbench,
   .admin-layout,
   .permission-layout,
   .branding-layout,
+  .branding-layout--nav,
   .summary-grid,
   .dashboard-panels,
+  .dashboard-panels--2col,
   .dashboard-panels--3col {
     grid-template-columns: 1fr;
   }
@@ -3291,7 +3414,7 @@ select {
   }
 
   .workbench {
-    grid-template-rows: 300px 1fr;
+    grid-template-rows: 220px 1fr;
   }
 
   .editor-side-toolbar {
@@ -3336,6 +3459,48 @@ select {
   .status-values-grid,
   .two-col-fields {
     grid-template-columns: 1fr;
+  }
+
+  .viewer-map-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .top-header-tabs {
+    padding: 8px 12px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+}
+
+/* ── Small phones (≤ 480px) ─────────────────────────────── */
+
+@media (max-width: 480px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-item span {
+    display: none;
+  }
+
+  .nav-item {
+    padding: 8px;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .logout-button span {
+    display: none;
+  }
+
+  .logout-button {
+    padding: 8px;
+    justify-content: center;
+    width: 44px;
+  }
+
+  .viewer-map-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
