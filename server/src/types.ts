@@ -48,7 +48,7 @@ export interface DeviceSnapshot {
 export interface TopologyNode {
   id: string;
   hostId?: string;
-  type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "olt" | "cloud" | "unknown";
+  type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "olt" | "cloud" | "onu" | "unknown";
   label: string;
   position: { x: number; y: number };
   iconSize?: number;
@@ -113,7 +113,7 @@ export interface TopologyEdge {
 export interface Topology {
   id: string;
   name: string;
-  topologyType?: "isp" | "corporate";
+  topologyType?: "isp" | "telecom" | "corporate";
   zabbixServerId?: string;
   zabbixServerIds?: string[];
   showGrid?: boolean;

@@ -20,14 +20,14 @@ import { ZabbixClient } from "./zabbix/ZabbixClient.js";
 const topologySchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1).max(120),
-  topologyType: z.enum(["isp", "corporate"]).optional(),
+  topologyType: z.enum(["isp", "telecom", "corporate"]).optional(),
   zabbixServerId: z.string().uuid().optional(),
   zabbixServerIds: z.array(z.string().uuid()).optional(),
   showGrid: z.boolean().optional(),
   nodes: z.array(z.object({
     id: z.string(),
     hostId: z.string().optional(),
-    type: z.enum(["switch", "router", "radio", "firewall", "server", "lte", "olt", "cloud", "unknown"]),
+    type: z.enum(["switch", "router", "radio", "firewall", "server", "lte", "olt", "cloud", "onu", "unknown"]),
     label: z.string(),
     position: z.object({ x: z.number(), y: z.number() }),
     iconSize: z.number().min(16).max(128).optional(),
@@ -42,6 +42,10 @@ const topologySchema = z.object({
     offlineValue: z.string().max(80).optional(),
     advancedMode: z.boolean().optional(),
     customIconId: z.string().uuid().optional(),
+    showOnus: z.boolean().optional(),
+    showOnlineOnly: z.boolean().optional(),
+    onuAliases: z.record(z.string(), z.string()).optional(),
+    onuPositions: z.record(z.string(), z.object({ x: z.number(), y: z.number() })).optional(),
     handles: z.array(z.string()).optional()
   })),
   edges: z.array(z.object({
@@ -642,6 +646,91 @@ export function createRoutes(
       res.status(502).json({
         error: "zabbix_items_failed",
         message: error instanceof Error ? error.message : "Falha ao consultar itens do Zabbix"
+      });
+    }
+  });
+
+  router.get("/server/zabbix/:serverId/hosts/:hostId/onus", async (req, res) => {
+    try {
+      const saved = await settings.getZabbixServer(req.params.serverId);
+      if (!saved) {
+        res.status(404).json({ error: "not_found", message: "Servidor Zabbix nao encontrado" });
+        return;
+      }
+      if (!saved.url || !saved.user || !saved.password) {
+        res.status(400).json({ error: "missing_zabbix_credentials", message: "Servidor Zabbix sem usuario ou senha salva" });
+        return;
+      }
+
+      const client = new ZabbixClient({
+        url: normalizeZabbixUrl(saved.url),
+        user: saved.user,
+        password: saved.password,
+        timeoutMs: 60000
+      });
+
+      const hostId = req.params.hostId;
+
+      const [hostResult, allItems] = await Promise.all([
+        client.call<any[]>("host.get", {
+          output: ["hostid", "host", "name"],
+          hostids: [hostId]
+        }),
+        client.call<any[]>("item.get", {
+          output: ["itemid", "name", "key_", "lastvalue", "lastclock"],
+          hostids: [hostId],
+          sortfield: "itemid",
+          sortorder: "ASC",
+          limit: 999999
+        })
+      ]);
+
+      const host = hostResult[0];
+      const onuMap = new Map<string, { name: string; status: string; updatedAt?: string; items: Array<{ key: string; name: string; value: string }> }>();
+
+      for (const item of allItems) {
+        const bracketMatch = (item.key_ as string).match(/\[([^\]]+)\]/);
+        if (!bracketMatch) continue;
+        const onuId = bracketMatch[1];
+        const existing = onuMap.get(onuId) ?? { name: onuId, status: "unknown", items: [] };
+        existing.items.push({ key: item.key_, name: item.name, value: item.lastvalue ?? "" });
+        if (!existing.updatedAt && item.lastclock) {
+          existing.updatedAt = new Date(Number(item.lastclock) * 1000).toISOString();
+        }
+        onuMap.set(onuId, existing);
+      }
+
+      for (const [onuId, onu] of onuMap) {
+        const statusItem = onu.items.find((i) =>
+          /status|oper[_\-]?state|admin[_\-]?state|online|state/i.test(i.key) ||
+          /status|estado|operacional/i.test(i.name)
+        );
+        if (statusItem) {
+          const val = (statusItem.value ?? "").toString().toLowerCase().trim();
+          if (val === "1" || val === "online" || val === "active" || val === "up" || val === "in-service") {
+            onu.status = "online";
+          } else if (val === "2" || val === "offline" || val === "inactive" || val === "down" || val === "0" || val === "out-of-service") {
+            onu.status = "offline";
+          }
+        }
+        onuMap.set(onuId, onu);
+      }
+
+      res.json({
+        hostId,
+        hostName: host?.name || host?.host || hostId,
+        onus: Array.from(onuMap.entries()).map(([id, onu]) => ({
+          id,
+          name: onu.name,
+          status: onu.status,
+          updatedAt: onu.updatedAt,
+          items: onu.items
+        }))
+      });
+    } catch (error) {
+      res.status(502).json({
+        error: "zabbix_onus_failed",
+        message: error instanceof Error ? error.message : "Falha ao consultar ONUs do OLT"
       });
     }
   });

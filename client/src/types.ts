@@ -45,17 +45,31 @@ export interface DeviceSnapshot {
   syncedAt: string;
 }
 
+export interface OltOnu {
+  id: string;
+  name: string;
+  status: "online" | "offline" | "unknown";
+  updatedAt?: string;
+  items: Array<{ key: string; name: string; value: string }>;
+}
+
+export interface OltOnusResult {
+  hostId: string;
+  hostName: string;
+  onus: OltOnu[];
+}
+
 export interface Topology {
   id?: string;
   name: string;
-  topologyType?: "isp" | "corporate";
+  topologyType?: "isp" | "telecom" | "corporate";
   zabbixServerId?: string;
   zabbixServerIds?: string[];
   showGrid?: boolean;
   nodes: Array<{
     id: string;
     hostId?: string;
-    type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "olt" | "cloud" | "unknown";
+    type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "olt" | "cloud" | "onu" | "unknown";
     label: string;
     position: { x: number; y: number };
     iconSize?: number;
@@ -70,6 +84,10 @@ export interface Topology {
     offlineValue?: string;
     advancedMode?: boolean;
     customIconId?: string;
+    showOnus?: boolean;
+    showOnlineOnly?: boolean;
+    onuAliases?: Record<string, string>;
+    onuPositions?: Record<string, { x: number; y: number }>;
     handles?: string[];
   }>;
   edges: Array<{

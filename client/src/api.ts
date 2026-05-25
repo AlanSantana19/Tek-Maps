@@ -1,4 +1,4 @@
-import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OnlineUser, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
+import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OltOnusResult, OnlineUser, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
 
 const TOKEN_KEY = "tek-map-token";
 export const AUTH_EXPIRED_EVENT = "tek-map-auth-expired";
@@ -161,6 +161,10 @@ export async function inspectZabbixItems(id: string) {
 
 export async function getZabbixServerHosts(id: string) {
   return apiGet<ZabbixHostsResult>(`/api/server/zabbix/${id}/hosts`);
+}
+
+export async function getOltOnus(serverId: string, hostId: string) {
+  return apiGet<OltOnusResult>(`/api/server/zabbix/${serverId}/hosts/${hostId}/onus`);
 }
 
 export async function createAccessUser(user: Omit<AccessUser, "id" | "createdAt"> & { password?: string }) {

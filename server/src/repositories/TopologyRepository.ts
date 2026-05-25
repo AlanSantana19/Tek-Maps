@@ -56,9 +56,12 @@ export class TopologyRepository {
   private ensureColumns(): Promise<void> {
     if (!this.ready) {
       this.ready = this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_id UUID")
-        .then(() => this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS topology_type TEXT CHECK (topology_type IN ('isp', 'corporate'))"))
+        .then(() => this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS topology_type TEXT CHECK (topology_type IN ('isp', 'telecom', 'corporate'))"))
         .then(() => this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS zabbix_server_ids UUID[] NOT NULL DEFAULT '{}'"))
         .then(() => this.db.query("ALTER TABLE topologies ADD COLUMN IF NOT EXISTS show_grid BOOLEAN NOT NULL DEFAULT true"))
+        .then(() => this.db.query("ALTER TABLE topologies DROP CONSTRAINT IF EXISTS topologies_topology_type_check"))
+        .then(() => this.db.query("UPDATE topologies SET topology_type = 'telecom' WHERE topology_type = 'isp'"))
+        .then(() => this.db.query("ALTER TABLE topologies ADD CONSTRAINT topologies_topology_type_check CHECK (topology_type IN ('telecom', 'corporate'))"))
         .then(() => undefined);
     }
     return this.ready;

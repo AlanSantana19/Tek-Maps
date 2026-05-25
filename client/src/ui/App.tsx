@@ -1,7 +1,6 @@
 import QRCode from "qrcode";
 import {
   Activity,
-  Antenna,
   ArrowLeft,
   BarChart3,
   Cable,
@@ -31,6 +30,7 @@ import {
   Pencil,
   Plus,
   Radio,
+  RefreshCw,
   RotateCcw,
   Router,
   Save,
@@ -41,10 +41,9 @@ import {
   Trash2,
   Upload,
   Users,
-  Workflow,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Connection, Edge, Node, NodePositionChange, OnEdgesChange, OnNodesChange, ReactFlowInstance } from "@xyflow/react";
 import type { DragEvent, FormEvent, MouseEvent } from "react";
 import { Background, BackgroundVariant, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
@@ -74,6 +73,7 @@ import {
   getMapPermissionAdminState,
   getOnlineUsers,
   getToken,
+  getOltOnus,
   getZabbixServerHosts,
   inspectZabbixItems,
   listAccessGroups,
@@ -101,7 +101,7 @@ import {
   updateUserGranularPermissions,
   updateZabbixConfig
 } from "../api";
-import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OnlineUser, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
+import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OltOnu, OnlineUser, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
 import { DeviceNode } from "./DeviceNode";
 
 const nodeTypes = { device: DeviceNode };
@@ -128,6 +128,12 @@ type DeviceNodeData = {
   advancedMode?: boolean;
   customIconId?: string;
   customIconUrl?: string;
+  showOnus?: boolean;
+  showOnlineOnly?: boolean;
+  onuAliases?: Record<string, string>;
+  onuPositions?: Record<string, { x: number; y: number }>;
+  directStatus?: "up" | "down" | "unknown";
+  isVirtual?: boolean;
   snapshot?: DeviceSnapshot;
   handles?: string[];
 };
@@ -218,6 +224,37 @@ type PaletteItem = {
 
 type EditorTool = "select" | "cable" | PaletteItem["id"];
 
+function LteIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="1" width="4" height="8" rx="1" fill="currentColor" stroke="none" />
+      <rect x="10" y="1" width="4" height="8" rx="1" fill="currentColor" stroke="none" />
+      <rect x="18" y="1" width="4" height="8" rx="1" fill="currentColor" stroke="none" />
+      <path d="M12 9 v5" />
+      <path d="M7 12 h10" />
+      <path d="M12 14 L7 20 M12 14 L17 20" />
+      <path d="M5 20 h14" />
+    </svg>
+  );
+}
+
+function OltIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1" y="2" width="22" height="7" rx="1.2" />
+      <rect x="2.5" y="3.5" width="3" height="4" rx="0.6" />
+      <rect x="7" y="3.5" width="3" height="4" rx="0.6" />
+      <rect x="11.5" y="3.5" width="3" height="4" rx="0.6" />
+      <circle cx="19.5" cy="5" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="19.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
+      <path d="M12 9 v3" />
+      <path d="M6.5 15 L12 12 L17.5 15" />
+      <circle cx="6.5" cy="18" r="2" fill="currentColor" stroke="none" />
+      <circle cx="17.5" cy="18" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 const paletteItems: PaletteItem[] = [
   { id: "host", label: "Host", type: "unknown", icon: HardDrive },
   { id: "router", label: "Router", type: "router", icon: Router },
@@ -226,8 +263,8 @@ const paletteItems: PaletteItem[] = [
   { id: "firewall", label: "Firewall", type: "firewall", icon: Shield },
   { id: "radio", label: "Radio", type: "radio", icon: Radio },
   { id: "server", label: "Servidor", type: "server", icon: Server },
-  { id: "lte", label: "LTE", type: "lte", icon: Workflow },
-  { id: "olt", label: "OLT", type: "olt", icon: Antenna },
+  { id: "lte", label: "LTE", type: "lte", icon: LteIcon as typeof Router },
+  { id: "olt", label: "OLT", type: "olt", icon: OltIcon as typeof Router },
   { id: "cloud", label: "Cloud", type: "cloud", icon: Cloud }
 ];
 
@@ -738,6 +775,10 @@ export function App() {
     advancedMode: boolean;
     customIconId?: string;
     customIconUrl?: string;
+    showOnus?: boolean;
+    showOnlineOnly?: boolean;
+    onuAliases?: Record<string, string>;
+    onuPositions?: Record<string, { x: number; y: number }>;
   }) {
     const host = value.hostId ? hosts.find((item) => item.hostId === value.hostId) : undefined;
     pushHistory();
@@ -766,6 +807,10 @@ export function App() {
           advancedMode: value.advancedMode,
           customIconId: value.customIconId,
           customIconUrl: value.customIconUrl,
+          showOnus: value.showOnus,
+          showOnlineOnly: value.showOnlineOnly,
+          onuAliases: value.onuAliases,
+          onuPositions: value.onuPositions,
           snapshot: host
         }
       };
@@ -900,6 +945,7 @@ export function App() {
       const topology = await saveTopology({
         id: selectedTopology.id,
         name: selectedTopology.name,
+        topologyType: selectedTopology.topologyType,
         zabbixServerId: selectedTopology.zabbixServerId,
         zabbixServerIds: selectedTopology.zabbixServerIds,
         showGrid,
@@ -1079,6 +1125,7 @@ export function App() {
         {activeSection === "editor" && editorMode === "canvas" ? (
           <TopologyEditor
             topologyName={selectedTopology.name}
+            topologyType={selectedTopology.topologyType}
             topologyZabbixServerIds={selectedTopology.zabbixServerIds ?? (selectedTopology.zabbixServerId ? [selectedTopology.zabbixServerId] : [])}
             topologyShowGrid={selectedTopology.showGrid ?? true}
             snapshotsByHost={snapshotsByHost}
@@ -1120,6 +1167,11 @@ export function App() {
               setTopologies((current) => current.map((topology) => (
                 topology.id === selectedTopology.id ? { ...topology, showGrid } : topology
               )));
+            }}
+            onNodeDataUpdate={(nodeId, data) => {
+              setNodes((current) => current.map((n) =>
+                n.id !== nodeId ? n : { ...n, data: { ...n.data, ...data } }
+              ));
             }}
           />
         ) : null}
@@ -1760,7 +1812,7 @@ function EditorMaps({
   onOpenTopology: (topology: Topology & { id: string }) => void;
 }) {
   const [servers, setServers] = useState<ZabbixServerConfig[]>([]);
-  const [form, setForm] = useState({ name: "", topologyType: "" as "" | "isp" | "corporate", zabbixServerIds: [] as string[] });
+  const [form, setForm] = useState({ name: "", topologyType: "" as "" | "telecom" | "corporate", zabbixServerIds: [] as string[] });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [savingMap, setSavingMap] = useState(false);
@@ -1817,7 +1869,8 @@ function EditorMaps({
 
   function editMap(topology: Topology & { id: string }) {
     setEditingId(topology.id);
-    setForm({ name: topology.name, topologyType: topology.topologyType ?? "", zabbixServerIds: topology.zabbixServerIds ?? (topology.zabbixServerId ? [topology.zabbixServerId] : []) });
+    const normalizedType = topology.topologyType === "isp" ? "telecom" : (topology.topologyType ?? "");
+    setForm({ name: topology.name, topologyType: normalizedType as "" | "telecom" | "corporate", zabbixServerIds: topology.zabbixServerIds ?? (topology.zabbixServerId ? [topology.zabbixServerId] : []) });
     setStatus(null);
   }
 
@@ -1907,9 +1960,9 @@ function EditorMaps({
           </label>
           <label>
             Tipo de topologia
-            <select value={form.topologyType} onChange={(event) => setForm({ ...form, topologyType: event.target.value as "" | "isp" | "corporate" })}>
+            <select value={form.topologyType} onChange={(event) => setForm({ ...form, topologyType: event.target.value as "" | "telecom" | "corporate" })}>
               <option value="">Nao especificado</option>
-              <option value="isp">ISP</option>
+              <option value="telecom">Telecom</option>
               <option value="corporate">Corporativo</option>
             </select>
           </label>
@@ -1958,7 +2011,7 @@ function EditorMaps({
                       <strong>{topology.name}</strong>
                       {topology.topologyType ? (
                         <span className={`topology-type-badge topology-type-badge--${topology.topologyType}`}>
-                          {topology.topologyType === "isp" ? "ISP" : "Corporativo"}
+                          {topology.topologyType === "telecom" || topology.topologyType === "isp" ? "Telecom" : "Corporativo"}
                         </span>
                       ) : null}
                     </div>
@@ -1988,6 +2041,7 @@ function EditorMaps({
 
 function TopologyEditor({
   topologyName,
+  topologyType,
   topologyZabbixServerIds,
   topologyShowGrid,
   snapshotsByHost,
@@ -2016,9 +2070,11 @@ function TopologyEditor({
   onUndo,
   canUndo,
   onRemoveSelectedNodes,
-  onShowGridChange
+  onShowGridChange,
+  onNodeDataUpdate
 }: {
   topologyName: string;
+  topologyType?: string;
   topologyZabbixServerIds: string[];
   topologyShowGrid: boolean;
   snapshotsByHost: Map<string, DeviceSnapshot>;
@@ -2048,6 +2104,10 @@ function TopologyEditor({
     advancedMode: boolean;
     customIconId?: string;
     customIconUrl?: string;
+    showOnus?: boolean;
+    showOnlineOnly?: boolean;
+    onuAliases?: Record<string, string>;
+    onuPositions?: Record<string, { x: number; y: number }>;
     handles?: string[];
   }) => void;
   onBulkUpdateNodes: (iconSize: number, labelFontSize: number) => void;
@@ -2067,9 +2127,13 @@ function TopologyEditor({
   canUndo: boolean;
   onRemoveSelectedNodes: (nodeIds: string[]) => void;
   onShowGridChange: (showGrid: boolean) => void;
+  onNodeDataUpdate: (nodeId: string, data: Partial<DeviceNodeData>) => void;
 }) {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showGrid, setShowGrid] = useState(topologyShowGrid);
+  const [onusByOltNodeId, setOnusByOltNodeId] = useState<Map<string, OltOnu[]>>(new Map());
+  const [seenOltOnus, setSeenOltOnus] = useState<Map<string, Set<string>>>(new Map());
+  const [onuRenameModal, setOnuRenameModal] = useState<{ oltNodeId: string; onuId: string; currentValue: string } | null>(null);
   const [clipboardCount, setClipboardCount] = useState(() => {
     try {
       const raw = localStorage.getItem(CLIPBOARD_KEY);
@@ -2146,7 +2210,7 @@ function TopologyEditor({
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<"basic" | "zabbix">("basic");
+  const [activeModalTab, setActiveModalTab] = useState<"basic" | "zabbix" | "onus">("basic");
   const [deviceForm, setDeviceForm] = useState({
     label: "",
     deviceType: "unknown" as Topology["nodes"][number]["type"],
@@ -2165,6 +2229,10 @@ function TopologyEditor({
     offlineValue: "2",
     advancedMode: false,
     customIconId: "" as string,
+    showOnus: false,
+    showOnlineOnly: false,
+    onuAliases: {} as Record<string, string>,
+    onuPositions: {} as Record<string, { x: number; y: number }>,
   });
   const [activeTool, setActiveTool] = useState<EditorTool>("select");
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
@@ -2292,6 +2360,40 @@ function TopologyEditor({
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [createMenuOpen]);
+
+  useEffect(() => {
+    const oltNodes = nodes.filter((n) => n.data.deviceType === "olt" && n.data.showOnus && n.data.hostId && (n.data.zabbixServerId || topologyZabbixServerIds.length > 0));
+    if (!oltNodes.length) {
+      setOnusByOltNodeId(new Map());
+      return;
+    }
+
+    async function fetchAll() {
+      const next = new Map<string, OltOnu[]>();
+      await Promise.all(oltNodes.map(async (n) => {
+        const serverId = n.data.zabbixServerId || topologyZabbixServerIds[0];
+        if (!serverId || !n.data.hostId) return;
+        try {
+          const result = await getOltOnus(serverId, n.data.hostId);
+          next.set(n.id, result.onus);
+          setSeenOltOnus((prev) => {
+            const seen = new Set(prev.get(n.id) ?? []);
+            result.onus.forEach((o) => { if (o.status === "online") seen.add(o.id); });
+            if (seen.size === (prev.get(n.id)?.size ?? 0)) return prev;
+            const copy = new Map(prev);
+            copy.set(n.id, seen);
+            return copy;
+          });
+        } catch { /* silent */ }
+      }));
+      setOnusByOltNodeId(next);
+    }
+
+    void fetchAll();
+    const interval = setInterval(() => void fetchAll(), 30_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes.map((n) => `${n.id}:${n.data.showOnus}:${n.data.hostId}:${n.data.zabbixServerId}`).join(","), topologyZabbixServerIds.join(",")]);
 
   function chooseTool(tool: EditorTool) {
     setActiveTool(tool);
@@ -2586,6 +2688,10 @@ function TopologyEditor({
       offlineValue: node.data.offlineValue ?? "2",
       advancedMode: node.data.advancedMode ?? false,
       customIconId: node.data.customIconId ?? "",
+      showOnus: node.data.showOnus ?? false,
+      showOnlineOnly: node.data.showOnlineOnly ?? false,
+      onuAliases: node.data.onuAliases ?? {},
+      onuPositions: node.data.onuPositions ?? {},
     });
   }
 
@@ -2618,6 +2724,10 @@ function TopologyEditor({
       advancedMode: deviceForm.advancedMode,
       customIconId: selectedIcon?.id,
       customIconUrl: selectedIcon?.dataUrl,
+      showOnus: deviceForm.showOnus,
+      showOnlineOnly: deviceForm.showOnlineOnly,
+      onuAliases: deviceForm.onuAliases,
+      onuPositions: deviceForm.onuPositions,
     });
     closeDeviceConfig();
   }
@@ -2674,7 +2784,7 @@ function TopologyEditor({
               </button>
               {createMenuOpen ? (
                 <div className="create-tool-menu" role="menu">
-                  {paletteItems.map((item) => {
+                  {paletteItems.filter((item) => topologyType === "telecom" || (item.type !== "lte" && item.type !== "olt")).map((item) => {
                     const Icon = item.icon;
                     return (
                       <button key={item.id} className={activeTool === item.id ? "active" : ""} type="button" onClick={() => chooseCreateTool(item.id)} role="menuitem">
@@ -2798,23 +2908,48 @@ function TopologyEditor({
             </button>
           </div>
         </div>
-        <TopologyCanvas
-          nodes={nodes}
-          edges={edges}
-          snapshotsByHost={snapshotsByHost}
-          onInit={setFlowInstance}
-          onNodeClick={(_, node) => handleNodeClick(node)}
-          onEdgeClick={(_, edge) => openLinkConfig(edge)}
-          onPaneClick={handlePaneClick}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          nodesDraggable
-          snapEnabled={snapEnabled}
-          showGrid={showGrid}
-        />
+        {(() => {
+          const { nodes: vNodes, edges: vEdges } = buildOnuVirtualNodes(nodes, onusByOltNodeId, seenOltOnus, false);
+          return (
+            <TopologyCanvas
+              nodes={nodes}
+              edges={edges}
+              extraNodes={vNodes}
+              extraEdges={vEdges}
+              snapshotsByHost={snapshotsByHost}
+              onInit={setFlowInstance}
+              onNodeClick={(_, node) => {
+                if (node.data.isVirtual) {
+                  const raw = node.id.slice("onu-v-".length);
+                  const oltNodeId = raw.slice(0, 36);
+                  const onuId = raw.slice(37);
+                  const oltNode = nodes.find((n) => n.id === oltNodeId);
+                  setOnuRenameModal({ oltNodeId, onuId, currentValue: oltNode?.data.onuAliases?.[onuId] ?? onuId });
+                } else {
+                  handleNodeClick(node);
+                }
+              }}
+              onEdgeClick={(_, edge) => openLinkConfig(edge)}
+              onPaneClick={handlePaneClick}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onVirtualNodeMove={(nodeId, position) => {
+                const raw = nodeId.slice("onu-v-".length);
+                const oltNodeId = raw.slice(0, 36);
+                const onuId = raw.slice(37);
+                const oltNode = nodes.find((n) => n.id === oltNodeId);
+                if (!oltNode) return;
+                onNodeDataUpdate(oltNodeId, { onuPositions: { ...(oltNode.data.onuPositions ?? {}), [onuId]: position } });
+              }}
+              nodesDraggable
+              snapEnabled={snapEnabled}
+              showGrid={showGrid}
+            />
+          );
+        })()}
       </section>
       {hostPickerOpen ? (
         <aside className="host-picker-panel" aria-label="Hosts Zabbix">
@@ -2969,6 +3104,12 @@ function TopologyEditor({
               <Link2 size={16} />
               Zabbix
             </button>
+            {topologyType === "telecom" && deviceForm.deviceType === "olt" && deviceForm.showOnus ? (
+              <button className={activeModalTab === "onus" ? "active" : ""} type="button" onClick={() => setActiveModalTab("onus")}>
+                <OltIcon size={16} />
+                ONUs
+              </button>
+            ) : null}
           </div>
 
           {activeModalTab === "basic" ? (
@@ -3069,6 +3210,39 @@ function TopologyEditor({
                 </label>
               </div>
 
+              {topologyType === "telecom" && deviceForm.deviceType === "olt" ? (
+                <div className="element-section">
+                  <div className="element-section-title">
+                    <OltIcon size={16} />
+                    <span>ONUs</span>
+                  </div>
+                  <label className="element-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={deviceForm.showOnus}
+                      onChange={(e) => setDeviceForm({ ...deviceForm, showOnus: e.target.checked })}
+                    />
+                    <span>
+                      Habilitar monitoramento de ONUs
+                      <small>Exibe ONUs na topologia e a aba ONUs</small>
+                    </span>
+                  </label>
+                  {deviceForm.showOnus ? (
+                    <label className="element-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={deviceForm.showOnlineOnly}
+                        onChange={(e) => setDeviceForm({ ...deviceForm, showOnlineOnly: e.target.checked })}
+                      />
+                      <span>
+                        Mostrar apenas ONUs online
+                        <small>ONUs offline ficam visíveis enquanto estiverem na sessão</small>
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="element-section">
                 <div className="element-section-title">
                   <MapIcon size={16} />
@@ -3090,6 +3264,14 @@ function TopologyEditor({
                 </div>
               </div>
             </div>
+          ) : activeModalTab === "onus" ? (
+            <OltMonitorPanel
+              hostId={deviceForm.hostId || undefined}
+              zabbixServerId={deviceForm.zabbixServerId || (topologyZabbixServerIds.length > 0 ? topologyZabbixServerIds[0] : undefined)}
+              zabbixServers={zabbixServers}
+              onuAliases={deviceForm.onuAliases}
+              onAliasChange={(id, alias) => setDeviceForm((f) => ({ ...f, onuAliases: { ...f.onuAliases, [id]: alias } }))}
+            />
           ) : (
             <div className="element-form zabbix-form">
               <div className="element-section">
@@ -3659,6 +3841,36 @@ function TopologyEditor({
           </div>
         </aside>
       ) : null}
+
+      {onuRenameModal ? (
+        <div className="onu-rename-modal-backdrop" onClick={() => setOnuRenameModal(null)}>
+          <div className="onu-rename-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="onu-rename-modal-header">
+              <span>Renomear ONU</span>
+              <small>{onuRenameModal.onuId}</small>
+            </div>
+            <input
+              className="onu-rename-modal-input"
+              defaultValue={onuRenameModal.currentValue !== onuRenameModal.onuId ? onuRenameModal.currentValue : ""}
+              placeholder={onuRenameModal.onuId}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { setOnuRenameModal(null); return; }
+                if (e.key === "Enter") {
+                  const val = (e.target as HTMLInputElement).value.trim();
+                  const oltNode = nodes.find((n) => n.id === onuRenameModal.oltNodeId);
+                  if (oltNode) {
+                    const aliases = { ...(oltNode.data.onuAliases ?? {}), [onuRenameModal.onuId]: val || onuRenameModal.onuId };
+                    onNodeDataUpdate(onuRenameModal.oltNodeId, { onuAliases: aliases });
+                  }
+                  setOnuRenameModal(null);
+                }
+              }}
+            />
+            <div className="onu-rename-modal-hint">Enter para salvar · Esc para cancelar</div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -3678,6 +3890,8 @@ function LiveViewer({
   const [selected, setSelected] = useState<(Topology & { id: string }) | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [onusByOltNodeId, setOnusByOltNodeId] = useState<Map<string, OltOnu[]>>(new Map());
+  const [seenOltOnus, setSeenOltOnus] = useState<Map<string, Set<string>>>(new Map());
   const frameRef = useRef<HTMLDivElement>(null);
   const rfInstanceRef = useRef<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
 
@@ -3737,6 +3951,39 @@ function LiveViewer({
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
+  useEffect(() => {
+    if (!selected) { setOnusByOltNodeId(new Map()); return; }
+    const oltTopologyNodes = selected.nodes.filter((n) => n.type === "olt" && n.showOnus && n.hostId);
+    if (!oltTopologyNodes.length) { setOnusByOltNodeId(new Map()); return; }
+
+    async function fetchAll() {
+      if (!selected) return;
+      const next = new Map<string, OltOnu[]>();
+      await Promise.all(oltTopologyNodes.map(async (n) => {
+        const serverId = n.zabbixServerId || selected!.zabbixServerIds?.[0] || selected!.zabbixServerId;
+        if (!serverId || !n.hostId) return;
+        try {
+          const result = await getOltOnus(serverId, n.hostId);
+          next.set(n.id, result.onus);
+          setSeenOltOnus((prev) => {
+            const seen = new Set(prev.get(n.id) ?? []);
+            result.onus.forEach((o) => { if (o.status === "online") seen.add(o.id); });
+            if (seen.size === (prev.get(n.id)?.size ?? 0)) return prev;
+            const copy = new Map(prev);
+            copy.set(n.id, seen);
+            return copy;
+          });
+        } catch { /* silent */ }
+      }));
+      setOnusByOltNodeId(next);
+    }
+
+    void fetchAll();
+    const interval = setInterval(() => void fetchAll(), 30_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
+
   function toggleFullscreen() {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
@@ -3786,15 +4033,22 @@ function LiveViewer({
         </button>
       </div>
       <div className="viewer-canvas-wrap">
-        <TopologyCanvas
-          key={selected.id}
-          nodes={viewNodes}
-          edges={viewEdges}
-          snapshotsByHost={snapshotsByHost}
-          readonly
-          showGrid={selected.showGrid ?? true}
-          onInit={(inst) => { rfInstanceRef.current = inst; }}
-        />
+        {(() => {
+          const { nodes: vNodes, edges: vEdges } = buildOnuVirtualNodes(viewNodes, onusByOltNodeId, seenOltOnus, true);
+          return (
+            <TopologyCanvas
+              key={selected.id}
+              nodes={viewNodes}
+              edges={viewEdges}
+              extraNodes={vNodes}
+              extraEdges={vEdges}
+              snapshotsByHost={snapshotsByHost}
+              readonly
+              showGrid={selected.showGrid ?? true}
+              onInit={(inst) => { rfInstanceRef.current = inst; }}
+            />
+          );
+        })()}
       </div>
     </div>
   );
@@ -5154,6 +5408,8 @@ function computeSnap(dragged: DeviceFlowNode, others: DeviceFlowNode[]) {
 function TopologyCanvas({
   nodes,
   edges,
+  extraNodes,
+  extraEdges,
   snapshotsByHost,
   readonly = false,
   onInit,
@@ -5165,12 +5421,16 @@ function TopologyCanvas({
   onNodesChange,
   onEdgesChange,
   onConnect,
+  onVirtualNodeMove,
   nodesDraggable,
   snapEnabled = true,
   showGrid = true
 }: {
   nodes: DeviceFlowNode[];
   edges: Edge[];
+  extraNodes?: DeviceFlowNode[];
+  extraEdges?: Edge[];
+  onVirtualNodeMove?: (nodeId: string, position: { x: number; y: number }) => void;
   snapshotsByHost?: Map<string, DeviceSnapshot>;
   readonly?: boolean;
   onInit?: (instance: ReactFlowInstance<DeviceFlowNode, Edge>) => void;
@@ -5190,6 +5450,33 @@ function TopologyCanvas({
   const [guideFlowX, setGuideFlowX] = useState<number[]>([]);
   const [guideFlowY, setGuideFlowY] = useState<number[]>([]);
   const canvasRef = useRef<HTMLElement>(null);
+
+  const allNodes = useMemo(
+    () => extraNodes?.length ? [...nodes, ...extraNodes] : nodes,
+    [nodes, extraNodes]
+  );
+  const allEdges = useMemo(
+    () => extraEdges?.length ? [...edges, ...extraEdges] : edges,
+    [edges, extraEdges]
+  );
+
+  const filteredOnNodesChange: OnNodesChange<DeviceFlowNode> | undefined = useMemo(() => {
+    if (!onNodesChange && !onVirtualNodeMove) return undefined;
+    return (changes) => {
+      const real: typeof changes = [];
+      for (const c of changes) {
+        const id = "id" in c && typeof c.id === "string" ? c.id : null;
+        if (id?.startsWith("onu-v-")) {
+          if (c.type === "position" && !c.dragging && c.position && onVirtualNodeMove) {
+            onVirtualNodeMove(id, c.position);
+          }
+        } else {
+          real.push(c);
+        }
+      }
+      if (real.length && onNodesChange) onNodesChange(real);
+    };
+  }, [onNodesChange, onVirtualNodeMove]);
 
   const handleNodeDrag = useCallback(
     (_: MouseEvent, draggedNode: DeviceFlowNode, draggedNodes: DeviceFlowNode[]) => {
@@ -5243,11 +5530,11 @@ function TopologyCanvas({
       ))}
       <SnapshotsContext.Provider value={snapshotsByHost ?? EMPTY_SNAPSHOTS}>
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={allNodes}
+          edges={allEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          onNodesChange={onNodesChange}
+          onNodesChange={filteredOnNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onInit={(inst) => {
@@ -5320,6 +5607,84 @@ function InterfaceMetricSummary({ port }: { port?: PortMetric }) {
   );
 }
 
+const ONU_PER_ROW = 10;
+const ONU_SPACING_X = 72;
+const ONU_SPACING_Y = 72;
+const ONU_ICON_SIZE = 32;
+
+function buildOnuVirtualNodes(
+  realNodes: DeviceFlowNode[],
+  onusByOltNodeId: Map<string, OltOnu[]>,
+  seenOltOnus: Map<string, Set<string>>,
+  readonly = false
+): { nodes: DeviceFlowNode[]; edges: Edge[] } {
+  const virtualNodes: DeviceFlowNode[] = [];
+  const virtualEdges: Edge[] = [];
+
+  for (const [oltNodeId, onus] of onusByOltNodeId) {
+    const oltNode = realNodes.find((n) => n.id === oltNodeId);
+    if (!oltNode || !onus.length) continue;
+
+    const aliases = oltNode.data.onuAliases ?? {};
+    const positions = oltNode.data.onuPositions ?? {};
+    const showOnlineOnly = oltNode.data.showOnlineOnly ?? false;
+    const seenIds = seenOltOnus.get(oltNodeId) ?? new Set<string>();
+
+    const filtered = showOnlineOnly
+      ? onus.filter((o) => o.status === "online" || seenIds.has(o.id))
+      : onus;
+
+    if (!filtered.length) continue;
+
+    const totalWidth = (Math.min(filtered.length, ONU_PER_ROW) - 1) * ONU_SPACING_X;
+    const oltHalf = (oltNode.data.iconSize ?? 48) / 2;
+    const defaultStartX = oltNode.position.x + oltHalf - totalWidth / 2;
+    const defaultStartY = oltNode.position.y + (oltNode.data.iconSize ?? 48) + 60;
+
+    filtered.forEach((onu, i) => {
+      const col = i % ONU_PER_ROW;
+      const row = Math.floor(i / ONU_PER_ROW);
+      const nodeId = `onu-v-${oltNodeId}-${onu.id}`;
+      const status: "up" | "down" | "unknown" =
+        onu.status === "online" ? "up" : onu.status === "offline" ? "down" : "unknown";
+
+      const savedPos = positions[onu.id];
+      const position = savedPos ?? {
+        x: defaultStartX + col * ONU_SPACING_X,
+        y: defaultStartY + row * ONU_SPACING_Y,
+      };
+
+      virtualNodes.push({
+        id: nodeId,
+        type: "device",
+        position,
+        selectable: !readonly,
+        draggable: !readonly,
+        data: {
+          label: aliases[onu.id] || onu.id,
+          deviceType: "onu",
+          iconSize: ONU_ICON_SIZE,
+          labelFontSize: 10,
+          labelPosition: "below",
+          showBackground: true,
+          directStatus: status,
+          isVirtual: true,
+        },
+      });
+
+      virtualEdges.push({
+        id: `onu-ve-${oltNodeId}-${onu.id}`,
+        source: oltNodeId,
+        target: nodeId,
+        type: "link",
+        data: { routing: "straight", cableType: "fiber", color: "#3b5a7a", strokeWidth: 1 },
+      });
+    });
+  }
+
+  return { nodes: virtualNodes, edges: virtualEdges };
+}
+
 function toFlowNode(hosts: DeviceSnapshot[], icons: CustomIcon[]) {
   const byHost = new Map(hosts.map((host) => [host.hostId, host]));
   const byIconId = new Map(icons.map((ic) => [ic.id, ic.dataUrl]));
@@ -5344,6 +5709,10 @@ function toFlowNode(hosts: DeviceSnapshot[], icons: CustomIcon[]) {
       advancedMode: node.advancedMode,
       customIconId: node.customIconId,
       customIconUrl: node.customIconId ? byIconId.get(node.customIconId) : undefined,
+      showOnus: node.showOnus,
+      showOnlineOnly: node.showOnlineOnly,
+      onuAliases: node.onuAliases,
+      onuPositions: node.onuPositions,
       snapshot: node.hostId ? byHost.get(node.hostId) : undefined,
       handles: node.handles
     }
@@ -5369,6 +5738,10 @@ function fromFlowNode(node: DeviceFlowNode): Topology["nodes"][number] {
     offlineValue: node.data.offlineValue,
     advancedMode: node.data.advancedMode,
     customIconId: node.data.customIconId,
+    showOnus: node.data.showOnus,
+    showOnlineOnly: node.data.showOnlineOnly,
+    onuAliases: node.data.onuAliases,
+    onuPositions: node.data.onuPositions,
     handles: node.data.handles
   };
 }
@@ -5584,6 +5957,177 @@ function cableStepText(draft: { sourceId?: string; targetId?: string }) {
     return "Origem selecionada. Clique no host de destino";
   }
   return "Selecione as interfaces e crie o cabo";
+}
+
+function OltMonitorPanel({
+  hostId,
+  zabbixServerId,
+  zabbixServers,
+  onuAliases,
+  onAliasChange,
+}: {
+  hostId?: string;
+  zabbixServerId?: string;
+  zabbixServers: ZabbixServerConfig[];
+  onuAliases: Record<string, string>;
+  onAliasChange: (onuId: string, alias: string) => void;
+}) {
+  const [onus, setOnus] = useState<OltOnu[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [editingOnuId, setEditingOnuId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const serverName = zabbixServers.find((s) => s.id === zabbixServerId)?.name ?? zabbixServerId ?? "";
+
+  async function loadOnus() {
+    if (!zabbixServerId || !hostId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getOltOnus(zabbixServerId, hostId);
+      setOnus(result.onus);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao consultar ONUs");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadOnus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostId, zabbixServerId]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => void loadOnus(), 30_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, hostId, zabbixServerId]);
+
+  if (!hostId || !zabbixServerId) {
+    return (
+      <div className="onu-panel-empty">
+        <OltIcon size={28} />
+        <p>Configure o Servidor Zabbix e o Host OLT na aba Zabbix antes de monitorar ONUs.</p>
+      </div>
+    );
+  }
+
+  const onlineCount = onus.filter((o) => o.status === "online").length;
+  const offlineCount = onus.filter((o) => o.status === "offline").length;
+
+  return (
+    <div className="onu-panel">
+      <div className="onu-panel-header">
+        <div className="onu-panel-meta">
+          <span className="onu-panel-server">{serverName}</span>
+          {lastUpdated ? (
+            <span className="onu-panel-updated">Atualizado {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+          ) : null}
+        </div>
+        <div className="onu-panel-actions">
+          <label className="onu-autorefresh-label" title="Atualizar automaticamente a cada 30s">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            Auto
+          </label>
+          <button
+            className="onu-refresh-btn"
+            type="button"
+            onClick={() => void loadOnus()}
+            disabled={loading}
+            title="Atualizar lista de ONUs"
+          >
+            <RefreshCw size={14} className={loading ? "spinning" : ""} />
+          </button>
+        </div>
+      </div>
+
+      {onus.length > 0 ? (
+        <div className="onu-summary">
+          <span className="onu-badge onu-badge--online">{onlineCount} online</span>
+          <span className="onu-badge onu-badge--offline">{offlineCount} offline</span>
+          {onus.length - onlineCount - offlineCount > 0 ? (
+            <span className="onu-badge onu-badge--unknown">{onus.length - onlineCount - offlineCount} desconhecido</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {error ? <p className="onu-error">{error}</p> : null}
+
+      {loading && onus.length === 0 ? (
+        <p className="onu-loading">Consultando ONUs no Zabbix...</p>
+      ) : null}
+
+      {!loading && !error && onus.length === 0 ? (
+        <div className="onu-panel-empty">
+          <OltIcon size={24} />
+          <p>Nenhuma ONU descoberta via LLD para este OLT.</p>
+          <small>Verifique se o template Zabbix utiliza Low Level Discovery para ONUs.</small>
+        </div>
+      ) : null}
+
+      <div className="onu-list">
+        {onus.map((onu) => {
+          const alias = onuAliases[onu.id];
+          const isEditing = editingOnuId === onu.id;
+          return (
+            <div key={onu.id} className={`onu-item onu-item--${onu.status}`}>
+              <span className={`status-dot ${onu.status === "online" ? "up" : onu.status === "offline" ? "down" : "unknown"}`} />
+              <div className="onu-item-body">
+                {isEditing ? (
+                  <div className="onu-rename-row">
+                    <input
+                      className="onu-rename-input"
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { onAliasChange(onu.id, editingValue.trim()); setEditingOnuId(null); }
+                        if (e.key === "Escape") setEditingOnuId(null);
+                      }}
+                      autoFocus
+                    />
+                    <button type="button" className="onu-rename-confirm" title="Confirmar" onClick={() => { onAliasChange(onu.id, editingValue.trim()); setEditingOnuId(null); }}>
+                      <Check size={13} />
+                    </button>
+                    <button type="button" className="onu-rename-cancel" title="Cancelar" onClick={() => setEditingOnuId(null)}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <strong>{alias || onu.name}</strong>
+                )}
+                {alias && !isEditing ? <small className="onu-original-name">{onu.name}</small> : null}
+                {onu.updatedAt && !isEditing ? (
+                  <small>{new Date(onu.updatedAt).toLocaleString("pt-BR")}</small>
+                ) : null}
+              </div>
+              {!isEditing ? (
+                <button
+                  type="button"
+                  className="onu-rename-btn"
+                  title="Renomear ONU"
+                  onClick={() => { setEditingOnuId(onu.id); setEditingValue(alias || onu.name); }}
+                >
+                  <Pencil size={13} />
+                </button>
+              ) : null}
+              <span className={`onu-status-label onu-status-label--${onu.status}`}>
+                {onu.status === "online" ? "ONLINE" : onu.status === "offline" ? "OFFLINE" : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function buildStatusItems(host: DeviceSnapshot | undefined): Array<{ key: string; label: string; value?: string | number }> {
