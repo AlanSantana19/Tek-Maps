@@ -27,7 +27,7 @@ const topologySchema = z.object({
   nodes: z.array(z.object({
     id: z.string(),
     hostId: z.string().optional(),
-    type: z.enum(["switch", "router", "radio", "firewall", "server", "lte", "unknown"]),
+    type: z.enum(["switch", "router", "radio", "firewall", "server", "lte", "olt", "cloud", "unknown"]),
     label: z.string(),
     position: z.object({ x: z.number(), y: z.number() }),
     iconSize: z.number().min(16).max(128).optional(),
