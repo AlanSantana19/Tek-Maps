@@ -386,10 +386,10 @@ export function LinkEdge({
               {showBadge && (
                 <>
                   <div style={{ color: "#34d399", fontSize: badgeFontSize, fontWeight: 600 }}>
-                    TX: {formatBps(txBps)}
+                    &#8594; {formatBps(txBps)}
                   </div>
                   <div style={{ color: "#60a5fa", fontSize: badgeFontSize, fontWeight: 600 }}>
-                    RX: {formatBps(rxBps)}
+                    &#8592; {formatBps(rxBps)}
                   </div>
                   {bandwidthLimitBps > 0 && (
                     <div style={{
@@ -433,11 +433,11 @@ export function LinkEdge({
                   </span>
                 </div>
                 <div className="edge-tooltip-row">
-                  <span className="edge-tooltip-label edge-tooltip-tx">TX</span>
+                  <span className="edge-tooltip-label edge-tooltip-tx">&#8594;</span>
                   <span className="edge-tooltip-value">{formatBps(txBps)}</span>
                 </div>
                 <div className="edge-tooltip-row">
-                  <span className="edge-tooltip-label edge-tooltip-rx">RX</span>
+                  <span className="edge-tooltip-label edge-tooltip-rx">&#8592;</span>
                   <span className="edge-tooltip-value">{formatBps(rxBps)}</span>
                 </div>
                 {bandwidthLimitBps > 0 && (

@@ -5307,8 +5307,8 @@ function InterfaceMetricSummary({ port }: { port?: PortMetric }) {
     <div className="interface-metric-summary">
       {hasTraffic ? (
         <>
-          <span className="iface-rx">RX: {formatBps(port.inBps)}</span>
-          <span className="iface-tx">TX: {formatBps(port.outBps)}</span>
+          <span className="iface-rx">&#8592; {formatBps(port.inBps)}</span>
+          <span className="iface-tx">&#8594; {formatBps(port.outBps)}</span>
           {port.speedMbps ? <span className="iface-speed">Velocidade: {port.speedMbps} Mbps</span> : null}
           {port.utilizationPct !== undefined ? <span className="iface-util">Uso: {port.utilizationPct}%</span> : null}
           {port.operStatus ? <span className={`iface-status iface-status--${port.operStatus}`}>{port.operStatus === "up" ? "UP" : port.operStatus === "down" ? "DOWN" : port.operStatus.toUpperCase()}</span> : null}
