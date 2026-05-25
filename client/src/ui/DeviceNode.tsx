@@ -41,17 +41,18 @@ export function DeviceNode({ data }: DeviceNodeProps) {
   const clampedSize = Math.max(16, Math.min(iconSize, 128));
   const style = { "--node-icon-size": `${clampedSize}px` } as CSSProperties;
 
+  const showStatus = data.deviceType !== "cloud";
   const handleStyle: CSSProperties = { ...INVISIBLE_HANDLE, top: "50%" };
 
   return (
-    <div className={`device-node topology-symbol ${status} ${showBackground ? "" : "no-background"} label-${labelPosition}`} style={style}>
+    <div className={`device-node topology-symbol ${showStatus ? status : ""} ${showBackground ? "" : "no-background"} label-${labelPosition}`} style={style}>
       <Handle type="target" position={Position.Left} id="center" style={handleStyle} />
       <Handle type="source" position={Position.Right} id="center" style={handleStyle} />
       <div className={`topology-icon-wrap ${shapeFor(data.deviceType)} ${data.customIconUrl ? "" : iconToneFor(data.deviceType)}`}>
         {data.customIconUrl
           ? <img src={data.customIconUrl} alt={data.label} className="custom-icon-img" />
           : <TopologyGlyph type={data.deviceType} />}
-        <span className={`topology-status ${status}`} />
+        {showStatus && <span className={`topology-status ${status}`} />}
       </div>
       <div className="topology-label" style={{ fontSize: `${labelFontSize}px` }}>
         <strong>{data.label}</strong>

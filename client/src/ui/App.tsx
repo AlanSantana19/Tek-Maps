@@ -2220,10 +2220,15 @@ function TopologyEditor({
   const statusItems = buildStatusItems(selectedHost);
   const draftSourceNode = nodes.find((node) => node.id === (selectedEdge?.source ?? linkDraft.sourceId));
   const draftTargetNode = nodes.find((node) => node.id === (selectedEdge?.target ?? linkDraft.targetId));
-  const sourceInterfaces = interfaceOptionsForNode(draftSourceNode);
+  const isSourceCloud = draftSourceNode?.data.deviceType === "cloud";
+  const isTargetCloud = draftTargetNode?.data.deviceType === "cloud";
+  const hasCloudEndpoint = isSourceCloud || isTargetCloud;
+  const cloudMonitoredNode = hasCloudEndpoint ? (isSourceCloud ? draftTargetNode : draftSourceNode) : undefined;
+  const effectiveInterfaceNode = cloudMonitoredNode ?? draftSourceNode;
+  const sourceInterfaces = interfaceOptionsForNode(effectiveInterfaceNode);
   const filteredSourceInterfaces = filterInterfaces(sourceInterfaces, linkForm.sourceSearch, onlyWithTraffic);
   const selectedSourceInterface = sourceInterfaces.find((port) => port.id === linkForm.sourceOutInterface);
-  const signalEffectiveHostId = linkForm.signalHostId || draftSourceNode?.data.hostId;
+  const signalEffectiveHostId = linkForm.signalHostId || effectiveInterfaceNode?.data.hostId;
   const signalAllMetrics = signalEffectiveHostId ? (getSnapshot(snapshotsByHost, String(signalEffectiveHostId), draftSourceNode?.data.zabbixServerId)?.metrics ?? []) : [];
   const signalOpticalMetrics = signalAllMetrics.filter((m) => m.unit === "dBm" || /optical|sfp|pon|rx\.power|tx\.power|optic|rssi|snr|signal/i.test(m.key) || /optical|sfp|pon|rx power|tx power|rssi|snr/i.test(m.label));
   const signalOtherMetrics = signalAllMetrics.filter((m) => !signalOpticalMetrics.includes(m));
@@ -2413,7 +2418,7 @@ function TopologyEditor({
     const port = selectedSourceInterface;
     const value = {
       label: linkForm.label.trim() || undefined,
-      sourceHostId: draftSourceNode?.data.hostId,
+      sourceHostId: (cloudMonitoredNode ?? draftSourceNode)?.data.hostId,
       targetHostId: draftTargetNode?.data.hostId,
       sourceOutInterface: linkForm.sourceOutInterface || undefined,
       targetInInterface: undefined as string | undefined,
@@ -2443,10 +2448,10 @@ function TopologyEditor({
       signalLabel: linkForm.signalLabel.trim() || undefined,
       signalTxMetricKey: linkForm.signalTxMetricKey || undefined,
       signalRxMetricKey: linkForm.signalRxMetricKey || undefined,
-      signalHostId: linkForm.signalHostId || draftSourceNode?.data.hostId,
+      signalHostId: linkForm.signalHostId || effectiveInterfaceNode?.data.hostId,
       showRadioSignal: linkForm.showRadioSignal,
       radioSignalLabel: linkForm.radioSignalLabel.trim() || undefined,
-      radioSignalHostId: linkForm.radioSignalHostId || draftSourceNode?.data.hostId,
+      radioSignalHostId: linkForm.radioSignalHostId || effectiveInterfaceNode?.data.hostId,
       radioSignalMetricKey: linkForm.radioSignalMetricKey || undefined,
       linkRole: linkForm.linkRole || undefined,
       showLinkRole: linkForm.showLinkRole,
@@ -3313,7 +3318,7 @@ function TopologyEditor({
                 </label>
               </div>
               <label>
-                Interface de Origem
+                {hasCloudEndpoint ? "Interface de chegada no host" : "Interface de Origem"}
               </label>
               <label className="traffic-filter-toggle">
                 <input type="checkbox" checked={onlyWithTraffic} onChange={(e) => setOnlyWithTraffic(e.target.checked)} />
@@ -3340,12 +3345,12 @@ function TopologyEditor({
               </div>
               <InterfaceMetricSummary port={selectedSourceInterface} />
               <div className="iface-diagnostics">
-                <span title={`${sourceInterfaces.length} interface(s) para origem`}>
-                  Origem: {sourceInterfaces.length > 0 ? `${sourceInterfaces.length} interfaces` : draftSourceNode?.data.hostId ? "0 interfaces (sem dados de porta)" : "sem host vinculado"}
+                <span title={`${sourceInterfaces.length} interface(s) para ${hasCloudEndpoint ? "host" : "origem"}`}>
+                  {hasCloudEndpoint ? "Host" : "Origem"}: {sourceInterfaces.length > 0 ? `${sourceInterfaces.length} interfaces` : effectiveInterfaceNode?.data.hostId ? "0 interfaces (sem dados de porta)" : "sem host vinculado"}
                 </span>
               </div>
-              {sourceInterfaces.length === 0 && draftSourceNode?.data.hostId ? (
-                <p className="form-status">Interfaces nao encontradas para o host de origem. Verifique no painel Servidor se os itens ifHCInOctets/ifHCOutOctets ou net.if.in/net.if.out estao chegando do Zabbix. A sincronizacao ocorre a cada ciclo automatico.</p>
+              {sourceInterfaces.length === 0 && effectiveInterfaceNode?.data.hostId ? (
+                <p className="form-status">Interfaces nao encontradas para o host. Verifique no painel Servidor se os itens ifHCInOctets/ifHCOutOctets ou net.if.in/net.if.out estao chegando do Zabbix. A sincronizacao ocorre a cada ciclo automatico.</p>
               ) : null}
             </div>
 
@@ -3538,10 +3543,10 @@ function TopologyEditor({
                     <label>
                       Equipamento
                       <select value={linkForm.signalHostId} onChange={(e) => setLinkForm({ ...linkForm, signalHostId: e.target.value, signalTxMetricKey: "", signalRxMetricKey: "" })}>
-                        {draftSourceNode?.data.hostId && (
+                        {draftSourceNode?.data.hostId && !isSourceCloud && (
                           <option value={draftSourceNode.data.hostId}>Origem: {draftSourceNode.data.label}</option>
                         )}
-                        {draftTargetNode?.data.hostId && (
+                        {draftTargetNode?.data.hostId && !isTargetCloud && (
                           <option value={draftTargetNode.data.hostId}>Destino: {draftTargetNode.data.label}</option>
                         )}
                       </select>
@@ -5598,7 +5603,7 @@ function inferDeviceType(name: string): Topology["nodes"][number]["type"] {
   if (/server|srv/i.test(name)) return "server";
   if (/switch|sw-/i.test(name)) return "switch";
   if (/\bolt\b/i.test(name)) return "olt";
-  if (/cloud/i.test(name)) return "cloud";
+  if (/\bcloud\b/i.test(name)) return "cloud";
   return "unknown";
 }
 
