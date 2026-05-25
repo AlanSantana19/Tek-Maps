@@ -65,6 +65,8 @@ select {
 .topology-name,
 .form-grid input,
 .form-grid select {
+  width: 100%;
+  min-width: 0;
   border: 1px solid #273244;
   border-radius: 8px;
   padding: 10px 12px;
@@ -84,7 +86,8 @@ select {
 .login-panel button,
 .save-button,
 .logout-button {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -3762,6 +3765,11 @@ select {
 }
 
 /* ── 2FA / Account ──────────────────────────────────────────────────────── */
+.login-panel .secondary-button {
+  width: 100%;
+  display: flex;
+}
+
 .login-totp-hint {
   font-size: 13px;
   color: #9ca3af;
@@ -3776,6 +3784,7 @@ select {
   letter-spacing: 0.4em;
   text-align: center;
   padding: 14px 12px;
+  max-width: 100%;
 }
 
 .totp-backup-codes {
