@@ -55,7 +55,7 @@ export interface Topology {
   nodes: Array<{
     id: string;
     hostId?: string;
-    type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "unknown";
+    type: "switch" | "router" | "radio" | "firewall" | "server" | "lte" | "olt" | "cloud" | "unknown";
     label: string;
     position: { x: number; y: number };
     iconSize?: number;

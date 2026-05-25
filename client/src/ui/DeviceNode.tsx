@@ -99,6 +99,10 @@ function TopologyGlyph({ type }: { type: string }) {
       return <SwitchDiagramGlyph />;
     case "lte":
       return <LteDiagramGlyph />;
+    case "olt":
+      return <OltDiagramGlyph />;
+    case "cloud":
+      return <CloudDiagramGlyph />;
     default:
       return <NetworkDiagramGlyph />;
   }
@@ -207,6 +211,35 @@ function NetworkDiagramGlyph() {
   );
 }
 
+function OltDiagramGlyph() {
+  return (
+    <svg viewBox="0 0 80 56" aria-hidden="true" className="diagram-glyph olt-glyph">
+      {/* OLT chassis */}
+      <rect className="glyph-body" x="16" y="5" width="48" height="20" rx="3" />
+      {/* port slots and LED */}
+      <path className="glyph-mark" d="M22 15h10M48 15h10" />
+      <circle className="glyph-dot" cx="38" cy="15" r="2.5" />
+      {/* fiber fan-out lines */}
+      <path className="glyph-body-stroke" d="M28 25L14 50M40 25L40 50M52 25L66 50" />
+      {/* ONT endpoint circles */}
+      <circle className="glyph-body" cx="14" cy="50" r="4" />
+      <circle className="glyph-body" cx="40" cy="50" r="4" />
+      <circle className="glyph-body" cx="66" cy="50" r="4" />
+    </svg>
+  );
+}
+
+function CloudDiagramGlyph() {
+  return (
+    <svg viewBox="0 0 80 56" aria-hidden="true" className="diagram-glyph cloud-glyph">
+      {/* cloud silhouette */}
+      <path className="glyph-body" d="M18 44 Q8 44 8 34 Q8 26 16 24 Q16 12 28 12 Q32 4 44 10 Q50 4 58 10 Q70 12 68 24 Q76 26 74 36 Q72 44 62 44 Z" />
+      {/* network lines inside cloud */}
+      <path className="glyph-mark" d="M28 30h24M40 22v16" />
+    </svg>
+  );
+}
+
 function iconToneFor(type: string) {
   switch (type) {
     case "router":
@@ -221,6 +254,10 @@ function iconToneFor(type: string) {
       return "icon-server";
     case "lte":
       return "icon-lte";
+    case "olt":
+      return "icon-olt";
+    case "cloud":
+      return "icon-cloud";
     default:
       return "icon-network";
   }

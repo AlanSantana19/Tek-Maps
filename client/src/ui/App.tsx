@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import {
   Activity,
+  Antenna,
   ArrowLeft,
   BarChart3,
   Cable,
@@ -8,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clipboard,
+  Cloud,
   Copy,
   Download,
   Eye,
@@ -224,7 +226,9 @@ const paletteItems: PaletteItem[] = [
   { id: "firewall", label: "Firewall", type: "firewall", icon: Shield },
   { id: "radio", label: "Radio", type: "radio", icon: Radio },
   { id: "server", label: "Servidor", type: "server", icon: Server },
-  { id: "lte", label: "LTE", type: "lte", icon: Workflow }
+  { id: "lte", label: "LTE", type: "lte", icon: Workflow },
+  { id: "olt", label: "OLT", type: "olt", icon: Antenna },
+  { id: "cloud", label: "Cloud", type: "cloud", icon: Cloud }
 ];
 
 const menuItems: Array<{ id: SectionId; label: string; icon: typeof BarChart3 }> = [
@@ -2983,6 +2987,8 @@ function TopologyEditor({
                     <option value="firewall">Firewall</option>
                     <option value="server">Servidor</option>
                     <option value="lte">LTE</option>
+                    <option value="olt">OLT</option>
+                    <option value="cloud">Cloud</option>
                   </select>
                 </label>
                 {customIcons.length > 0 ? (
@@ -5591,6 +5597,8 @@ function inferDeviceType(name: string): Topology["nodes"][number]["type"] {
   if (/radio|ap-|wireless/i.test(name)) return "radio";
   if (/server|srv/i.test(name)) return "server";
   if (/switch|sw-/i.test(name)) return "switch";
+  if (/\bolt\b/i.test(name)) return "olt";
+  if (/cloud/i.test(name)) return "cloud";
   return "unknown";
 }
 
