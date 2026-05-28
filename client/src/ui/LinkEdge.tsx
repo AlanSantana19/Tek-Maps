@@ -140,15 +140,26 @@ export function LinkEdge({
 
   // ── Traffic ────────────────────────────────────────────────────────────────
   const sourceSnapshot = data?.sourceHostId ? snapshots.get(data.sourceHostId) : undefined;
+  const targetSnapshot = data?.targetHostId ? snapshots.get(data.targetHostId) : undefined;
+
   const sourcePort = data?.sourceOutInterface
     ? sourceSnapshot?.ports.find((p) => p.id === data!.sourceOutInterface)
+    : undefined;
+  const targetPort = data?.targetInInterface
+    ? targetSnapshot?.ports.find((p) => p.id === data!.targetInInterface)
     : undefined;
 
   const txBps = sourcePort?.outBps ?? 0;
   const rxBps = sourcePort?.inBps ?? 0;
   const hasInterfaces    = Boolean(data?.sourceOutInterface);
   const hasActiveTraffic = hasInterfaces && (txBps > 0 || rxBps > 0);
-  const isDown           = sourcePort ? sourcePort.operStatus === "down" : false;
+
+  // Cable is DOWN if any linked endpoint device or interface is down (absent = not down)
+  const isDown =
+    (sourceSnapshot ? sourceSnapshot.status === "down" : false) ||
+    (targetSnapshot ? targetSnapshot.status === "down" : false) ||
+    (sourcePort     ? sourcePort.operStatus   === "down" : false) ||
+    (targetPort     ? targetPort.operStatus   === "down" : false);
 
   // ── Bandwidth threshold ─────────────────────────────────────────────────────
   const bandwidthLimitBps = data?.bandwidthLimit ? data.bandwidthLimit * 1e6 : 0;
@@ -272,7 +283,7 @@ export function LinkEdge({
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Animated pulse dot */}
+      {/* Animated pulse dot — forward (normal traffic) */}
       {showTraffic && hasActiveTraffic && !isDown ? (
         <g>
           <circle r={strokeWidth + 5} fill={strokeColor} opacity={0.18}>
@@ -291,6 +302,7 @@ export function LinkEdge({
           </circle>
         </g>
       ) : null}
+
 
       <EdgeLabelRenderer>
         {/* Waypoint drag handle — only for bendable cables */}

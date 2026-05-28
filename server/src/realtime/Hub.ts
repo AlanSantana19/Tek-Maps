@@ -14,7 +14,17 @@ export class Hub {
   private readonly onlineUsers = new Map<WebSocket, OnlineUser>();
 
   constructor(server: http.Server) {
-    this.wss = new WebSocketServer({ server, path: "/ws" });
+    this.wss = new WebSocketServer({
+      server,
+      path: "/ws",
+      // Compresses each WebSocket frame (permessage-deflate, RFC 7692).
+      // JSON repeats keys heavily — typical compression ratio 70-85%.
+      // All modern mobile browsers negotiate this automatically.
+      perMessageDeflate: {
+        zlibDeflateOptions: { level: 1 },
+        threshold: 512,
+      },
+    });
 
     this.wss.on("connection", (ws, req) => {
       const url = new URL(req.url ?? "/", "ws://localhost");

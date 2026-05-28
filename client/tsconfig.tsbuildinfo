@@ -1,1 +1,1 @@
-{"root":["./src/api.ts","./src/main.tsx","./src/types.ts","./src/ui/App.tsx","./src/ui/DeviceNode.test.tsx","./src/ui/DeviceNode.tsx","./src/ui/LinkEdge.tsx"],"version":"5.9.3"}
+{"root":["./src/api.ts","./src/main.tsx","./src/types.ts","./src/ui/App.tsx","./src/ui/DeviceNode.test.tsx","./src/ui/DeviceNode.tsx","./src/ui/LinkEdge.tsx"],"errors":true,"version":"5.9.3"}

@@ -73,12 +73,23 @@ export async function disableTotp(code: string): Promise<void> {
   }
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: authHeaders() });
-  if (!response.ok) {
-    await throwApiError(response, `GET ${path} falhou: ${response.status}`);
+export async function apiGet<T>(path: string, timeoutMs = 45_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(path, { headers: authHeaders(), signal: controller.signal });
+    if (!response.ok) {
+      await throwApiError(response, `GET ${path} falhou: ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Tempo limite excedido ao carregar ${path}. Verifique sua conexão.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json() as Promise<T>;
 }
 
 export async function getAppVersion() {
@@ -101,16 +112,28 @@ export async function getFaviconConfig() {
   return apiGet<FaviconConfig>("/api/branding/favicon");
 }
 
-export async function apiSend<T>(path: string, method: "POST" | "PUT" | "PATCH", body: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method,
-    headers: { "content-type": "application/json", ...authHeaders() },
-    body: JSON.stringify(body)
-  });
-  if (!response.ok) {
-    await throwApiError(response, `${method} ${path} falhou: ${response.status}`);
+export async function apiSend<T>(path: string, method: "POST" | "PUT" | "PATCH", body: unknown, timeoutMs = 45_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(path, {
+      method,
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      await throwApiError(response, `${method} ${path} falhou: ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Tempo limite excedido em ${method} ${path}. Verifique sua conexão.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json() as Promise<T>;
 }
 
 export async function apiDelete(path: string): Promise<void> {
