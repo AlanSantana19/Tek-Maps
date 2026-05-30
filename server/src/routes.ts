@@ -14,6 +14,7 @@ import type { RecentEventRepository } from "./repositories/RecentEventRepository
 import type { SettingsRepository } from "./repositories/SettingsRepository.js";
 import type { TopologyRepository } from "./repositories/TopologyRepository.js";
 import type { ZabbixCacheRepository } from "./repositories/ZabbixCacheRepository.js";
+import type { MapShareRepository } from "./repositories/MapShareRepository.js";
 import { mapZabbixSnapshots } from "./zabbix/mapper.js";
 import { ZabbixClient } from "./zabbix/ZabbixClient.js";
 
@@ -186,7 +187,8 @@ export function createRoutes(
   mapPermissions: MapPermissionRepository,
   activity: ActivityRepository,
   hub: Hub,
-  recentEvents: RecentEventRepository
+  recentEvents: RecentEventRepository,
+  shareLinks: MapShareRepository
 ) {
   const router = express.Router();
   const otp = new OTP();
@@ -289,6 +291,80 @@ export function createRoutes(
       res.status(500).json({ error: "internal_error" });
       req.log?.error({ error }, "totp verification failed");
     });
+  });
+
+  // Public share endpoint — no auth required
+  router.get("/public/share/:token", async (req, res, next) => {
+    try {
+      const link = await shareLinks.findByToken(req.params.token);
+      if (!link) {
+        res.status(404).json({ error: "share_not_found", message: "Link invalido ou expirado." });
+        return;
+      }
+      const topology = await topologies.get(link.topologyId);
+      if (!topology) {
+        res.status(404).json({ error: "topology_not_found" });
+        return;
+      }
+      const usedIconIds = new Set(topology.nodes.map((n) => n.customIconId).filter(Boolean));
+      const customIcons = usedIconIds.size > 0
+        ? (await icons.list()).filter((ic) => usedIconIds.has(ic.id))
+        : [];
+      res.json({ topology: sanitizeTopology(topology), shareLink: link, customIcons });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Status em tempo real do mapa compartilhado — sem IPs, sem IDs internos
+  router.get("/public/share/:token/status", async (req, res, next) => {
+    try {
+      const link = await shareLinks.findByToken(req.params.token);
+      if (!link) {
+        res.status(404).json({ error: "share_not_found" });
+        return;
+      }
+      const topology = await topologies.get(link.topologyId);
+      if (!topology) {
+        res.status(404).json({ error: "topology_not_found" });
+        return;
+      }
+      const snapshots = await cache.list();
+      const snapshotByHost = new Map(snapshots.map((s) => [s.hostId, s]));
+
+      const nodeStatuses = topology.nodes
+        .filter((n) => n.hostId)
+        .map((n) => ({
+          nodeId: n.id,
+          status: snapshotByHost.get(n.hostId!)?.status ?? "unknown"
+        }));
+
+      const edgeStatuses = topology.edges
+        .filter((e) => e.sourceHostId && e.sourceOutInterface)
+        .map((e) => {
+          const srcSnap = snapshotByHost.get(e.sourceHostId!);
+          const tgtSnap = e.targetHostId ? snapshotByHost.get(e.targetHostId) : undefined;
+          const srcPort = srcSnap?.ports.find((p) => p.id === e.sourceOutInterface);
+          const tgtPort = e.targetInInterface && tgtSnap
+            ? tgtSnap.ports.find((p) => p.id === e.targetInInterface)
+            : undefined;
+          const isDown =
+            (srcSnap ? srcSnap.status === "down" : false) ||
+            (tgtSnap ? tgtSnap.status === "down" : false) ||
+            (srcPort ? srcPort.operStatus === "down" : false) ||
+            (tgtPort ? tgtPort.operStatus === "down" : false);
+          return {
+            edgeId: e.id,
+            txBps: srcPort?.outBps ?? 0,
+            rxBps: srcPort?.inBps ?? 0,
+            isDown
+          };
+        });
+
+      res.json({ nodes: nodeStatuses, edges: edgeStatuses });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.use(requireAuth);
@@ -1210,6 +1286,55 @@ export function createRoutes(
     }
   });
 
+  const shareLinkSchema = z.object({
+    expiresInHours: z.number().int().min(1).max(720).nullable()
+  });
+
+  router.post("/topologies/:id/share", async (req: AuthRequest, res, next) => {
+    try {
+      const parsed = shareLinkSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_share_params", details: parsed.error.flatten() });
+        return;
+      }
+      const topologyId = String(req.params.id);
+      const topology = await topologies.get(topologyId);
+      if (!topology) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      const expiresAt = parsed.data.expiresInHours !== null
+        ? new Date(Date.now() + parsed.data.expiresInHours * 60 * 60 * 1000)
+        : null;
+      const link = await shareLinks.create(topologyId, req.user?.sub ?? "unknown", expiresAt);
+      res.status(201).json(link);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/topologies/:id/shares", async (req, res, next) => {
+    try {
+      const links = await shareLinks.listByTopology(req.params.id);
+      res.json(links);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/shares/:token", async (req, res, next) => {
+    try {
+      const removed = await shareLinks.revoke(req.params.token);
+      if (!removed) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/icons", async (_req, res, next) => {
     try {
       res.json(await icons.list());
@@ -1347,4 +1472,50 @@ function mergeItemsById(...groups: any[][]): any[] {
     }
   }
   return [...items.values()];
+}
+
+// Remove todos os identificadores internos do Zabbix antes de expor publicamente.
+// Nunca retorna: hostId, zabbixServerId, itemIds, metricKeys, IPs.
+function sanitizeTopology(topology: import("./types.js").Topology) {
+  return {
+    id: topology.id,
+    name: topology.name,
+    topologyType: topology.topologyType,
+    showGrid: topology.showGrid,
+    nodes: topology.nodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      label: n.label,
+      position: n.position,
+      iconSize: n.iconSize,
+      labelFontSize: n.labelFontSize,
+      labelPosition: n.labelPosition,
+      color: n.color,
+      showBackground: n.showBackground,
+      showIp: false, // nunca exibe IP em link público
+      customIconId: n.customIconId,
+      handles: n.handles
+    })),
+    edges: topology.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: e.label,
+      cableType: e.cableType,
+      color: e.color,
+      strokeWidth: e.strokeWidth,
+      lineStyle: e.lineStyle,
+      badgeFontSize: e.badgeFontSize,
+      showLabel: e.showLabel,
+      routing: e.routing,
+      waypointDX: e.waypointDX,
+      waypointDY: e.waypointDY,
+      showSignal: e.showSignal,
+      signalLabel: e.signalLabel,
+      showRadioSignal: e.showRadioSignal,
+      radioSignalLabel: e.radioSignalLabel,
+      bandwidthLimit: e.bandwidthLimit
+      // omitidos intencionalmente: sourceHostId, targetHostId, *ItemId, *MetricKey, *HostId
+    }))
+  };
 }

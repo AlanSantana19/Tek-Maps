@@ -99,9 +99,12 @@ import {
   updateFaviconConfig,
   updateNavLogoConfig,
   updateUserGranularPermissions,
-  updateZabbixConfig
+  updateZabbixConfig,
+  createShareLink,
+  listShareLinks,
+  revokeShareLink
 } from "../api";
-import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OltOnu, OnlineUser, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
+import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, GroupMapPermission, GroupMenuPermission, LoginLogoConfig, MapPermissionAdminState, MapShareLink, NavLogoConfig, OltOnu, OnlineUser, PermissionKey, PortMetric, Topology, UserMapPermission, UserMenuPermission, ZabbixItemsInspection, ZabbixServerConfig } from "../types";
 import { DeviceNode } from "./DeviceNode";
 
 const nodeTypes = { device: DeviceNode };
@@ -1124,6 +1127,7 @@ export function App() {
 
         {activeSection === "editor" && editorMode === "canvas" ? (
           <TopologyEditor
+            topologyId={selectedTopology.id}
             topologyName={selectedTopology.name}
             topologyType={selectedTopology.topologyType}
             topologyZabbixServerIds={selectedTopology.zabbixServerIds ?? (selectedTopology.zabbixServerId ? [selectedTopology.zabbixServerId] : [])}
@@ -2040,6 +2044,7 @@ function EditorMaps({
 }
 
 function TopologyEditor({
+  topologyId,
   topologyName,
   topologyType,
   topologyZabbixServerIds,
@@ -2073,6 +2078,7 @@ function TopologyEditor({
   onShowGridChange,
   onNodeDataUpdate
 }: {
+  topologyId?: string;
   topologyName: string;
   topologyType?: string;
   topologyZabbixServerIds: string[];
@@ -2134,6 +2140,7 @@ function TopologyEditor({
   const [onusByOltNodeId, setOnusByOltNodeId] = useState<Map<string, OltOnu[]>>(new Map());
   const [seenOltOnus, setSeenOltOnus] = useState<Map<string, Set<string>>>(new Map());
   const [onuRenameModal, setOnuRenameModal] = useState<{ oltNodeId: string; onuId: string; currentValue: string } | null>(null);
+  const [showEditorShareModal, setShowEditorShareModal] = useState(false);
   const [clipboardCount, setClipboardCount] = useState(() => {
     try {
       const raw = localStorage.getItem(CLIPBOARD_KEY);
@@ -2759,6 +2766,9 @@ function TopologyEditor({
 
   return (
     <section className="workbench">
+      {showEditorShareModal && topologyId && (
+        <ShareModal topologyId={topologyId} onClose={() => setShowEditorShareModal(false)} />
+      )}
       <section className="map-stage">
         <div className="editor-map-header">
           <button type="button" onClick={onBack} title="Voltar aos mapas" aria-label="Voltar aos mapas">
@@ -2903,6 +2913,11 @@ function TopologyEditor({
             </div>
           </div>
           <div className="editor-side-actions">
+            {topologyId && (
+              <button className="tool-button" onClick={() => setShowEditorShareModal(true)} title="Compartilhar mapa" aria-label="Compartilhar mapa">
+                <Link2 size={17} />
+              </button>
+            )}
             <button className="tool-button save-tool-button" onClick={() => onSave(showGrid)} disabled={saving} title="Salvar" aria-label="Salvar">
               <Save size={18} />
             </button>
@@ -3875,6 +3890,159 @@ function TopologyEditor({
   );
 }
 
+const SHARE_EXPIRY_OPTIONS: Array<{ label: string; hours: number | null }> = [
+  { label: "1 hora", hours: 1 },
+  { label: "6 horas", hours: 6 },
+  { label: "24 horas", hours: 24 },
+  { label: "7 dias", hours: 168 },
+  { label: "30 dias", hours: 720 },
+  { label: "Nunca expira", hours: null }
+];
+
+function ShareModal({
+  topologyId,
+  onClose
+}: {
+  topologyId: string;
+  onClose: () => void;
+}) {
+  const [expiresInHours, setExpiresInHours] = useState<number | null>(24);
+  const [creating, setCreating] = useState(false);
+  const [links, setLinks] = useState<MapShareLink[]>([]);
+  const [newLink, setNewLink] = useState<MapShareLink | null>(null);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listShareLinks(topologyId).then(setLinks).catch(() => {});
+  }, [topologyId]);
+
+  async function handleCreate() {
+    setCreating(true);
+    setError(null);
+    try {
+      const link = await createShareLink(topologyId, expiresInHours);
+      setNewLink(link);
+      setLinks((prev) => [link, ...prev.filter((l) => l.token !== link.token)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao gerar link.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleCopy(token: string) {
+    const url = `${window.location.origin}/share/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2000);
+    } catch {
+      setError("Nao foi possivel copiar. Copie manualmente.");
+    }
+  }
+
+  async function handleRevoke(token: string) {
+    try {
+      await revokeShareLink(token);
+      setLinks((prev) => prev.filter((l) => l.token !== token));
+      if (newLink?.token === token) setNewLink(null);
+    } catch {
+      setError("Erro ao revogar link.");
+    }
+  }
+
+  function formatExpiry(iso: string | null) {
+    if (!iso) return "Nunca expira";
+    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  }
+
+  return (
+    <div className="share-panel-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <aside className="element-editor-panel share-panel" role="dialog" aria-modal="true" aria-labelledby="share-panel-title">
+        <div className="element-editor-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Link2 size={16} style={{ color: "#7f94a1" }} />
+            <h2 id="share-panel-title">Compartilhar mapa</h2>
+          </div>
+          <button className="element-close-button" onClick={onClose} aria-label="Fechar"><X size={16} /></button>
+        </div>
+
+        <div className="element-section">
+          <span className="element-kicker">Novo link</span>
+          <div className="element-form">
+            <label>
+              Validade
+              <select
+                value={expiresInHours ?? "never"}
+                onChange={(e) => setExpiresInHours(e.target.value === "never" ? null : Number(e.target.value))}
+              >
+                {SHARE_EXPIRY_OPTIONS.map((opt) => (
+                  <option key={opt.hours ?? "never"} value={opt.hours ?? "never"}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="action-row" style={{ justifyContent: "flex-start", marginTop: 4 }}>
+            <button className="secondary-button" onClick={() => void handleCreate()} disabled={creating} style={{ gap: 7 }}>
+              <Link2 size={14} />
+              {creating ? "Gerando..." : "Gerar link"}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <p style={{ margin: 0, fontSize: 12, color: "#ef4444" }}>{error}</p>
+        )}
+
+        {links.length > 0 && (
+          <div className="element-section">
+            <span className="element-kicker">Links ativos ({links.length})</span>
+            <div className="share-active-list">
+              {links.map((link) => {
+                const url = `${window.location.origin}/share/${link.token}`;
+                const isCopied = copiedToken === link.token;
+                return (
+                  <div key={link.token} className={`share-active-item${newLink?.token === link.token ? " share-active-item--new" : ""}`}>
+                    <div className="share-active-url">{url}</div>
+                    <div className="share-active-meta">
+                      {link.expiresAt ? `Expira ${formatExpiry(link.expiresAt)}` : "Nunca expira"}
+                    </div>
+                    <div className="share-active-actions">
+                      <button
+                        className="secondary-button share-active-btn"
+                        onClick={() => void handleCopy(link.token)}
+                        title="Copiar link"
+                      >
+                        {isCopied ? <Check size={13} /> : <Copy size={13} />}
+                        {isCopied ? "Copiado" : "Copiar"}
+                      </button>
+                      <button
+                        className="secondary-button share-active-btn share-active-btn--danger"
+                        onClick={() => void handleRevoke(link.token)}
+                        title="Revogar link"
+                      >
+                        <Trash2 size={13} />
+                        Revogar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {links.length === 0 && !creating && (
+          <p style={{ margin: 0, fontSize: 12, color: "#7f94a1", textAlign: "center" }}>
+            Nenhum link ativo. Gere um acima.
+          </p>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 const VIEWER_REFRESH_INTERVAL = 10;
 
 function LiveViewer({
@@ -3892,6 +4060,7 @@ function LiveViewer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [onusByOltNodeId, setOnusByOltNodeId] = useState<Map<string, OltOnu[]>>(new Map());
   const [seenOltOnus, setSeenOltOnus] = useState<Map<string, Set<string>>>(new Map());
+  const [showShareModal, setShowShareModal] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const rfInstanceRef = useRef<ReactFlowInstance<DeviceFlowNode, Edge> | null>(null);
 
@@ -4020,18 +4189,30 @@ function LiveViewer({
 
   return (
     <div ref={frameRef} className={`viewer-live${isFullscreen ? " viewer-fullscreen" : ""}`}>
-      <div className="viewer-bar">
-        <span className="viewer-bar-title">
-          <Activity size={15} />
-          {selected.name}
-        </span>
-        <button className="viewer-bar-btn" onClick={toggleFullscreen} title={isFullscreen ? "Sair tela cheia" : "Tela cheia"}>
-          {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
-        </button>
-        <button className="viewer-bar-btn viewer-exit" onClick={exitViewer} title="Sair">
-          <X size={17} />
-        </button>
-      </div>
+      {showShareModal && selected && (
+        <ShareModal topologyId={selected.id} onClose={() => setShowShareModal(false)} />
+      )}
+
+      {isFullscreen ? (
+        <div className="viewer-fs-name">{selected.name}</div>
+      ) : (
+        <div className="viewer-bar">
+          <span className="viewer-bar-title">
+            <Activity size={15} />
+            {selected.name}
+          </span>
+          <button className="viewer-bar-btn" onClick={() => setShowShareModal(true)} title="Compartilhar mapa">
+            <Link2 size={17} />
+          </button>
+          <button className="viewer-bar-btn" onClick={toggleFullscreen} title="Tela cheia">
+            <Maximize2 size={17} />
+          </button>
+          <button className="viewer-bar-btn viewer-exit" onClick={exitViewer} title="Sair">
+            <X size={17} />
+          </button>
+        </div>
+      )}
+
       <div className="viewer-canvas-wrap">
         {(() => {
           const { nodes: vNodes, edges: vEdges } = buildOnuVirtualNodes(viewNodes, onusByOltNodeId, seenOltOnus, true);

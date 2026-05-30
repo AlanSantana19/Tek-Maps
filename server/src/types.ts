@@ -62,6 +62,7 @@ export interface TopologyNode {
   onlineValue?: string;
   offlineValue?: string;
   advancedMode?: boolean;
+  customIconId?: string;
   handles?: string[];
 }
 

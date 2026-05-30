@@ -330,3 +330,11 @@ export interface OnlineUser {
   ip: string;
   connectedAt: string;
 }
+
+export interface MapShareLink {
+  token: string;
+  topologyId: string;
+  createdBy: string;
+  expiresAt: string | null;
+  createdAt: string;
+}

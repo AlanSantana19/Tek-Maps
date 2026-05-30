@@ -1,4 +1,4 @@
-import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, NavLogoConfig, OltOnusResult, OnlineUser, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
+import type { AccessGroup, AccessGroupMember, AccessUser, ActivityLogEntry, AppVersion, CurrentUserPermissions, CustomIcon, DeviceSnapshot, FaviconConfig, LoginLogoConfig, MapPermissionAdminState, MapShareLink, NavLogoConfig, OltOnusResult, OnlineUser, PermissionKey, Topology, UserMapPermission, ZabbixHostsResult, ZabbixItemsInspection, ZabbixServerConfig, ZabbixTestResult } from "./types";
 
 const TOKEN_KEY = "tek-map-token";
 export const AUTH_EXPIRED_EVENT = "tek-map-auth-expired";
@@ -329,6 +329,43 @@ export async function getRecentEvents() {
 
 export async function saveRecentEvent(event: { id: string; type: string; label: string; detail?: string }) {
   return apiSend<{ ok: boolean }>("/api/events/recent", "POST", event);
+}
+
+export async function createShareLink(topologyId: string, expiresInHours: number | null): Promise<MapShareLink> {
+  return apiSend<MapShareLink>(`/api/topologies/${topologyId}/share`, "POST", { expiresInHours });
+}
+
+export interface SharedEdgeStatus {
+  edgeId: string;
+  txBps: number;
+  rxBps: number;
+  isDown: boolean;
+}
+
+export async function getSharedStatus(token: string): Promise<{
+  nodes: Array<{ nodeId: string; status: string }>;
+  edges: SharedEdgeStatus[];
+}> {
+  const response = await fetch(`/api/public/share/${token}/status`);
+  if (!response.ok) return { nodes: [], edges: [] };
+  return response.json() as Promise<{ nodes: Array<{ nodeId: string; status: string }>; edges: SharedEdgeStatus[] }>;
+}
+
+export async function listShareLinks(topologyId: string): Promise<MapShareLink[]> {
+  return apiGet<MapShareLink[]>(`/api/topologies/${topologyId}/shares`);
+}
+
+export async function revokeShareLink(token: string): Promise<void> {
+  return apiDelete(`/api/shares/${token}`);
+}
+
+export async function getSharedTopology(token: string): Promise<{ topology: Topology; shareLink: MapShareLink; customIcons: CustomIcon[] }> {
+  const response = await fetch(`/api/public/share/${token}`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message ?? "Link invalido ou expirado.");
+  }
+  return response.json() as Promise<{ topology: Topology; shareLink: MapShareLink; customIcons: CustomIcon[] }>;
 }
 
 export function openSnapshotsSocket(

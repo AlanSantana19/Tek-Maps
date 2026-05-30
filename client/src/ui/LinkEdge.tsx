@@ -80,6 +80,11 @@ export type LinkEdgePayload = {
   linkRole?: "primary" | "backup";
   showLinkRole?: boolean;
   bandwidthLimit?: number;
+  // Valores pré-calculados pelo servidor — usados no link compartilhado público
+  // (sem expor hostId nem itemIds ao cliente)
+  precomputedTxBps?: number;
+  precomputedRxBps?: number;
+  precomputedIsDown?: boolean;
 };
 
 export const SnapshotsContext = createContext<Map<string, DeviceSnapshot>>(new Map());
@@ -139,27 +144,30 @@ export function LinkEdge({
                         : undefined;
 
   // ── Traffic ────────────────────────────────────────────────────────────────
-  const sourceSnapshot = data?.sourceHostId ? snapshots.get(data.sourceHostId) : undefined;
-  const targetSnapshot = data?.targetHostId ? snapshots.get(data.targetHostId) : undefined;
+  const hasPrecomputed = data?.precomputedTxBps !== undefined || data?.precomputedRxBps !== undefined;
 
-  const sourcePort = data?.sourceOutInterface
+  const sourceSnapshot = !hasPrecomputed && data?.sourceHostId ? snapshots.get(data.sourceHostId) : undefined;
+  const targetSnapshot = !hasPrecomputed && data?.targetHostId ? snapshots.get(data.targetHostId) : undefined;
+
+  const sourcePort = !hasPrecomputed && data?.sourceOutInterface
     ? sourceSnapshot?.ports.find((p) => p.id === data!.sourceOutInterface)
     : undefined;
-  const targetPort = data?.targetInInterface
+  const targetPort = !hasPrecomputed && data?.targetInInterface
     ? targetSnapshot?.ports.find((p) => p.id === data!.targetInInterface)
     : undefined;
 
-  const txBps = sourcePort?.outBps ?? 0;
-  const rxBps = sourcePort?.inBps ?? 0;
-  const hasInterfaces    = Boolean(data?.sourceOutInterface);
+  const txBps = data?.precomputedTxBps ?? sourcePort?.outBps ?? 0;
+  const rxBps = data?.precomputedRxBps ?? sourcePort?.inBps ?? 0;
+  const hasInterfaces    = hasPrecomputed || Boolean(data?.sourceOutInterface);
   const hasActiveTraffic = hasInterfaces && (txBps > 0 || rxBps > 0);
 
   // Cable is DOWN if any linked endpoint device or interface is down (absent = not down)
-  const isDown =
+  const isDown = data?.precomputedIsDown ?? (
     (sourceSnapshot ? sourceSnapshot.status === "down" : false) ||
     (targetSnapshot ? targetSnapshot.status === "down" : false) ||
     (sourcePort     ? sourcePort.operStatus   === "down" : false) ||
-    (targetPort     ? targetPort.operStatus   === "down" : false);
+    (targetPort     ? targetPort.operStatus   === "down" : false)
+  );
 
   // ── Bandwidth threshold ─────────────────────────────────────────────────────
   const bandwidthLimitBps = data?.bandwidthLimit ? data.bandwidthLimit * 1e6 : 0;

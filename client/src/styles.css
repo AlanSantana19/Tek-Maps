@@ -2130,6 +2130,19 @@ select {
   border: none;
 }
 
+.viewer-fs-name {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 20;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e7eef2;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  user-select: none;
+}
+
 .viewer-bar {
   display: flex;
   align-items: center;
@@ -2184,6 +2197,135 @@ select {
   flex: 1;
   overflow: hidden;
   min-height: 0;
+}
+
+/* ── Shared viewer (public link) ───────────────────────────────── */
+.shared-viewer-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  background: #0d1117;
+  color: #c9d4d9;
+}
+
+.shared-viewer-loading,
+.shared-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  color: #8a9bb5;
+}
+
+.shared-viewer-error h2 {
+  color: #c9d4d9;
+  margin: 0;
+}
+
+.shared-viewer-error p {
+  margin: 0;
+  max-width: 340px;
+}
+
+.shared-viewer-live {
+  position: fixed;
+  inset: 0;
+  background: #050607;
+}
+
+.shared-viewer-expiry {
+  font-size: 11px;
+  color: #8a9bb5;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.shared-viewer-ws-status {
+  display: flex;
+  align-items: center;
+  color: #8a9bb5;
+  margin-left: 6px;
+}
+
+/* ── Share link modal ──────────────────────────────────────────── */
+/* ── Share panel (usa element-editor-panel como base) ─────────── */
+.share-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.share-panel {
+  width: min(440px, calc(100vw - 44px));
+  top: 78px;
+  right: 22px;
+}
+
+.share-active-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.share-active-list::-webkit-scrollbar {
+  display: none;
+}
+
+.share-active-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid #202a3a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #0b0d10;
+  transition: border-color 0.15s;
+}
+
+.share-active-item--new {
+  border-color: #1e3a5f;
+  background: #080f1a;
+}
+
+.share-active-url {
+  font-size: 11px;
+  color: #7f94a1;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.share-active-meta {
+  font-size: 11px;
+  color: #4a6070;
+}
+
+.share-active-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.share-active-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  min-height: unset;
+  gap: 5px;
+  border-radius: 6px;
+}
+
+.share-active-btn--danger {
+  color: #ef4444;
+  border-color: #3f1f22;
+}
+
+.share-active-btn--danger:hover {
+  background: #1a0c0e;
+  border-color: #7d2d35;
 }
 
 .form-grid {

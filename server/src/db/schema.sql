@@ -166,3 +166,14 @@ CREATE INDEX IF NOT EXISTS idx_aumpa_created_at     ON access_user_map_permissio
 CREATE INDEX IF NOT EXISTS idx_aumpa_user_id        ON access_user_map_permission_audit(user_id);
 CREATE INDEX IF NOT EXISTS idx_aumenup_user_id      ON access_user_menu_permissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_aumenupa_created_at  ON access_user_menu_permission_audit(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS map_share_links (
+  token TEXT PRIMARY KEY,
+  topology_id UUID NOT NULL REFERENCES topologies(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_msl_topology_id ON map_share_links(topology_id);
+CREATE INDEX IF NOT EXISTS idx_msl_expires_at  ON map_share_links(expires_at);
