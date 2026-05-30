@@ -449,7 +449,7 @@ export function LinkEdge({
                 <div className="edge-tooltip-row">
                   <span className="edge-tooltip-label">Status</span>
                   <span className={`edge-tooltip-value ${isDown ? "edge-tooltip-down" : "edge-tooltip-up"}`}>
-                    {isDown ? "DOWN" : (sourcePort?.operStatus ?? "desconhecido")}
+                    {isDown ? "DOWN" : (hasPrecomputed ? "UP" : (sourcePort?.operStatus ?? "desconhecido"))}
                   </span>
                 </div>
                 <div className="edge-tooltip-row">
